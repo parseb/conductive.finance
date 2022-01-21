@@ -7,7 +7,7 @@ project_structure:
   tests: tests
 
 networks:
-  default: development
+  default: mainnet-fork
   development:
     gas_limit: max
     gas_buffer: 1
@@ -29,9 +29,9 @@ networks:
 compiler:
   evm_version: null
   solc:
-    version: "0.8.4"
+    version: null
     optimizer:
-      enabled: false
+      enabled: true
       runs: 200
     remappings: null
   vyper:
@@ -43,23 +43,24 @@ console:
   auto_suggest: true
   completions: true
   editing_mode: emacs
-# reports:
-#   exclude_paths: null
-#   exclude_contracts: null
-#   only_include_project: true
 
-# hypothesis:
-#   deadline: null
-#   max_examples: 50
-#   report_multiple_bugs: False
-#   stateful_step_count: 10
-#   phases:
-#     explicit: true
-#     reuse: true
-#     generate: true
-#     target: true
-#     shrink: true
+reports:
+  exclude_paths: null
+  exclude_contracts: null
+  only_include_project: true
 
-# autofetch_sources: false
-# dependencies: null
-# dev_deployment_artifacts: false
+hypothesis:
+  deadline: null
+  max_examples: 50
+  report_multiple_bugs: False
+  stateful_step_count: 10
+  phases:
+    explicit: true
+    reuse: true
+    generate: true
+    target: true
+    shrink: true
+
+autofetch_sources: false
+dependencies: null
+dev_deployment_artifacts: false
