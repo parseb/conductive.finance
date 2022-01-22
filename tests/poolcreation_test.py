@@ -1,5 +1,7 @@
+from __future__ import with_statement
+from audioop import reverse
 import pytest
-from brownie import convert
+from brownie import convert, ZERO_ADDRESS, accounts
 
 
 def test_trainid_is_validatedbyby_uniswap_registry(yMarkt, uniswap):
@@ -9,6 +11,33 @@ def test_trainid_is_validatedbyby_uniswap_registry(yMarkt, uniswap):
     unipool = str(uniswap.getPool(USDC, WETH, "3000"))
     yresultunipool = str(yMarkt.isValidPool(USDC, WETH, "3000"))
     assert yresultunipool == unipool
+    ###  ValueError: invalid literal for int() with base 16: '' - ganache-cli:
+
+
+def test_becomes_valid_pool(yMarkt, uniswap):
+    STASIS = "0xdb25f211ab05b1c97d595516f45794528a807ad8"
+    YFI = "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e"
+
+    assert yMarkt.isValidPool(STASIS, YFI, "3000") == ZERO_ADDRESS
+
+    cycle_freq = 306  # blocks
+    min_cycles = 100
+    budget_slice = 2  # %2 distribute per cycle
+    price_memory = 10  # 'days ago memory'
+
+    assert yMarkt.createTrain(
+        STASIS,
+        YFI,
+        3000,
+        ZERO_ADDRESS,
+        cycle_freq,
+        min_cycles * cycle_freq,
+        budget_slice,
+        price_memory,
+    )
+
+    assert yMarkt.isValidPool(STASIS, YFI, "3000") != ZERO_ADDRESS
+
     ###  ValueError: invalid literal for int() with base 16: '' - ganache-cli:
 
 
@@ -32,3 +61,18 @@ def test_create_train_returns_true(yMarkt, addrzero, uniswap):
         budget_slice,
         price_memory,
     )
+
+
+def test_creates_ticket(yMarkt):
+    train = "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8"
+    # previous_number_of_passengers = yMarkt.getTrain(train).passengers
+    price = 9001
+    # previous_tickets_onprice = yMarkt.ticketsFromPrice(price).length
+    # print("previous_tickets_onprice - ", previous_tickets_onprice)
+
+    ticket = yMarkt.createTicket(
+        10000, 100, price, "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8"
+    )
+    assert ticket
+    # assert yMarkt.getTrain(train).passengers == previous_number_of_passengers + 1
+    # assert yMarkt.ticketsFromPrice(price).length == previous_tickets_onprice + 1
