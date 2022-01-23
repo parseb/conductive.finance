@@ -1,7 +1,5 @@
-from __future__ import with_statement
-from audioop import reverse
 import pytest
-from brownie import convert, ZERO_ADDRESS, accounts
+from brownie import convert, ZERO_ADDRESS, accounts, chain, rpc
 
 
 def test_trainid_is_validatedbyby_uniswap_registry(yMarkt, uniswap):
@@ -65,14 +63,14 @@ def test_create_train_returns_true(yMarkt, addrzero, uniswap):
 
 def test_creates_ticket(yMarkt):
     train = "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8"
-    # previous_number_of_passengers = yMarkt.getTrain(train).passengers
+    previous_number_of_passengers = yMarkt.getTrain(train)[2]
     price = 9001
-    # previous_tickets_onprice = yMarkt.ticketsFromPrice(price).length
-    # print("previous_tickets_onprice - ", previous_tickets_onprice)
+    previous_tickets_onprice = len(yMarkt.getTicketsByPrice(train, price))
 
     ticket = yMarkt.createTicket(
         10000, 100, price, "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8"
     )
+    chain.mine(2)
     assert ticket
-    # assert yMarkt.getTrain(train).passengers == previous_number_of_passengers + 1
-    # assert yMarkt.ticketsFromPrice(price).length == previous_tickets_onprice + 1
+    assert yMarkt.getTrain(train)[2] == previous_number_of_passengers + 1
+    assert len(yMarkt.getTicketsByPrice(train, price)) == previous_tickets_onprice + 1

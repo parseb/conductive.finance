@@ -1,5 +1,5 @@
 import pytest
-from brownie import accounts, Ymarkt, Contract, chain, convert
+from brownie import accounts, Ymarkt, Contract, chain, convert, rpc
 
 
 @pytest.fixture(scope="module")

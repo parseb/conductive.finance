@@ -14,7 +14,7 @@ contract Ymarkt is Ownable {
     IUniswapV3Factory uniswapV3 =
         IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
 
-    IUniswapV3PoolImmutables poolBasicMeta;
+    //IUniswapV3PoolImmutables poolBasicMeta;
 
     struct operators {
         address poolOwner; //address of the pool owner/creator
@@ -24,7 +24,6 @@ contract Ymarkt is Ownable {
         address uniPool; //address of the uniswap pool ^
     }
 
-    /// @dev loop on cycle or update state on withdrawal
     struct configdata {
         uint32 cycleFreq; // sleepy blocks nr of
         uint32 minDistance; //min distance of block travel for reward
@@ -60,7 +59,7 @@ contract Ymarkt is Ownable {
     mapping(address => uint64) lastStation;
 
     /// @notice tickets fetchable by perunit price
-    mapping(uint64 => Ticket[]) public ticketsFromPrice;
+    mapping(address => mapping(uint64 => Ticket[])) ticketsFromPrice;
 
     constructor() {}
 
@@ -164,7 +163,7 @@ contract Ymarkt is Ownable {
                 cycleFreq: _cycleFreq,
                 minDistance: _minDistance,
                 budgetSlicer: _budgetSlicer,
-                upperRewardBound: 0
+                upperRewardBound: _upperRewardBound
             })
         });
 
@@ -215,7 +214,7 @@ contract Ymarkt is Ownable {
         incrementPassengers(_trainAddress);
         incrementBag(_trainAddress, _bagSize);
 
-        ticketsFromPrice[_perUnit].push(ticket);
+        ticketsFromPrice[_trainAddress][_perUnit].push(ticket);
 
         success = true;
     }
@@ -236,6 +235,18 @@ contract Ymarkt is Ownable {
 
     function incrementBag(address _trainId, uint64 _bagSize) private {
         getTrainByPool[_trainId].inCustody += _bagSize;
+    }
+
+    function decrementBag(address _trainId, uint64 _bagSize) private {
+        getTrainByPool[_trainId].inCustody -= _bagSize;
+    }
+
+    function getTicketsByPrice(address _train, uint64 _perPrice)
+        public
+        view
+        returns (Ticket[] memory)
+    {
+        return ticketsFromPrice[_train][_perPrice];
     }
 
     //////// Private Functions
