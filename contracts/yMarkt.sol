@@ -7,8 +7,11 @@ pragma solidity 0.8.4;
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/access/Ownable.sol";
 import "Uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
 import "Uniswap/v3-core/contracts/interfaces/pool/IUniswapV3PoolImmutables.sol";
+//import {VaultAPI, BaseWrapper} from "@yearnvaults/contracts/BaseWrapper.sol";
+import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20.sol";
+import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/security/ReentrancyGuard.sol";
 
-contract Ymarkt is Ownable {
+contract Ymarkt is Ownable, ReentrancyGuard {
     /// @dev Uniswap V3 Factory address used to validate token pair and price
 
     IUniswapV3Factory uniswapV3 =
@@ -17,11 +20,11 @@ contract Ymarkt is Ownable {
     //IUniswapV3PoolImmutables poolBasicMeta;
 
     struct operators {
-        address poolOwner; //address of the pool owner/creator
-        address yVault; //address of yVault if any
+        address trainConductor; //address of the pool owner/creator
         address denominatorToken; //quote token contract address
         address buybackToken; //buyback token contract address
         address uniPool; //address of the uniswap pool ^
+        address yVault; //address of yVault if any
     }
 
     struct configdata {
@@ -29,14 +32,15 @@ contract Ymarkt is Ownable {
         uint32 minDistance; //min distance of block travel for reward
         uint16 budgetSlicer; // spent per cycle % (0 - 10000 0.01%-100%)
         uint16 upperRewardBound; // upper reward bound determiner
+        uint32 minBagSize; // min bag size
     }
 
     struct Train {
         operators meta;
         uint256 yieldSharesTotal; //increments on cycle, decrements on offboard
+        uint256 budget; //total disposable budget
+        uint256 inCustody; //total bag volume
         uint64 passengers; //unique participants/positions
-        uint64 budget; //total disposable budget
-        uint64 inCustody; //total bag volume
         configdata config; //configdata
     }
 
@@ -44,8 +48,8 @@ contract Ymarkt is Ownable {
         uint64 destination; //promises to travel to block
         uint64 departure; // created on block
         uint32 rewarded; //number of times in reward space
-        uint32 bagSize; //amount token
-        uint64 perUnit; //buyout price
+        uint256 bagSize; //amount token
+        uint256 perUnit; //buyout price
         address trainAddress; //train ID (pair pool)
     }
 
@@ -59,7 +63,7 @@ contract Ymarkt is Ownable {
     mapping(address => uint64) lastStation;
 
     /// @notice tickets fetchable by perunit price
-    mapping(address => mapping(uint64 => Ticket[])) ticketsFromPrice;
+    mapping(address => mapping(uint256 => Ticket[])) ticketsFromPrice;
 
     constructor() {}
 
@@ -70,6 +74,9 @@ contract Ymarkt is Ownable {
     error NotOnThisTrain(address train);
     error ZeroValuesNotAllowed();
     error TrainNotFound(address ghostTrain);
+    error IssueOnDeposit(uint256 amount, address token);
+    error MinDepositRequired(uint256 required, uint256 provided);
+
     //////  Errors
     ////////////////////////////////
 
@@ -86,6 +93,15 @@ contract Ymarkt is Ownable {
         if (getTrainByPool[_train].meta.uniPool == address(0)) {
             revert TrainNotFound(_train);
         }
+        _;
+    }
+
+    modifier ensureBagSize(uint256 _bagSize, address _train) {
+        if (_bagSize < getTrainByPool[_train].config.minBagSize)
+            revert MinDepositRequired(
+                getTrainByPool[_train].config.minBagSize,
+                _bagSize
+            );
         _;
     }
 
@@ -124,7 +140,8 @@ contract Ymarkt is Ownable {
         uint32 _cycleFreq,
         uint32 _minDistance,
         uint16 _budgetSlicer,
-        uint16 _upperRewardBound
+        uint16 _upperRewardBound,
+        uint32 _minBagSize
     ) public returns (bool successCreated) {
         if (
             _cycleFreq <= 1 ||
@@ -149,7 +166,7 @@ contract Ymarkt is Ownable {
 
         getTrainByPool[uniPool] = Train({
             meta: operators({
-                poolOwner: msg.sender,
+                trainConductor: msg.sender,
                 yVault: _yVault,
                 denominatorToken: _budgetToken,
                 buybackToken: _buybackToken,
@@ -163,23 +180,29 @@ contract Ymarkt is Ownable {
                 cycleFreq: _cycleFreq,
                 minDistance: _minDistance,
                 budgetSlicer: _budgetSlicer,
-                upperRewardBound: _upperRewardBound
+                upperRewardBound: _upperRewardBound,
+                minBagSize: _minBagSize
             })
         });
 
         successCreated = true;
+
+        /// @dev emit event
+        /// @dev add vaults. check if any. create if not. tbd if value added
     }
 
     function createTicket(
         uint64 _stations, // how many cycles
-        uint32 _bagSize, // nr of tokens
-        uint64 _perUnit, // target price
-        address _trainAddress // train address
+        uint256 _perUnit, // target price
+        address _trainAddress, // train address
+        uint256 _bagSize // nr of tokens
     )
         public
         payable
         ensureTrain(_trainAddress)
+        ensureBagSize(_bagSize, _trainAddress)
         onlyUnticketed(_trainAddress)
+        nonReentrant
         returns (bool success)
     {
         if (
@@ -194,6 +217,10 @@ contract Ymarkt is Ownable {
         Train memory train = getTrainByPool[_trainAddress];
 
         ///trainexists modifier
+        require(train.meta.uniPool != address(0), "Train not found");
+
+        if (_bagSize < train.config.minBagSize)
+            revert MinDepositRequired(train.config.minBagSize, _bagSize);
 
         uint64 _departure = uint64(block.number);
         uint64 _destination = _stations *
@@ -225,6 +252,17 @@ contract Ymarkt is Ownable {
     /////////////////////////////////
     ////////  PRIVATE FUNCTIONS
 
+    function depositsBag(uint256 _bagSize, address _trainID)
+        private
+        returns (bool success)
+    {
+        IERC20 token = IERC20(_trainID);
+        uint256 _prevBalance = token.balanceOf(address(this));
+        require(token.transferFrom(msg.sender, address(this), _bagSize));
+        require(token.balanceOf(address(this)) >= _prevBalance + _bagSize);
+        success = true;
+    }
+
     function incrementPassengers(address _trainId) private {
         getTrainByPool[_trainId].passengers++;
     }
@@ -233,11 +271,11 @@ contract Ymarkt is Ownable {
         getTrainByPool[_trainId].passengers--;
     }
 
-    function incrementBag(address _trainId, uint64 _bagSize) private {
+    function incrementBag(address _trainId, uint256 _bagSize) private {
         getTrainByPool[_trainId].inCustody += _bagSize;
     }
 
-    function decrementBag(address _trainId, uint64 _bagSize) private {
+    function decrementBag(address _trainId, uint256 _bagSize) private {
         getTrainByPool[_trainId].inCustody -= _bagSize;
     }
 

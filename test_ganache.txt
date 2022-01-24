@@ -1,0 +1,1 @@
+ganache --port 8545 --gasLimit 12000000 --accounts 10 --hardfork istanbul --mnemonic brownie --fork https://mainnet.infura.io/v3/$WEB3_INFURA_PROJECT_ID
