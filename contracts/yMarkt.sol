@@ -86,6 +86,9 @@ contract Ymarkt is Ownable, ReentrancyGuard {
     //////  Events
     ////////////////////////////////
 
+    //////XXXXX ERC721
+    /////XXXXX  deposit at cycle in pool.
+
     ////////////////////////////////
     ////////  MODIFIERS
 
@@ -222,6 +225,8 @@ contract Ymarkt is Ownable, ReentrancyGuard {
         if (_bagSize < train.config.minBagSize)
             revert MinDepositRequired(train.config.minBagSize, _bagSize);
 
+        depositsBag(_bagSize, train.meta.buybackToken);
+
         uint64 _departure = uint64(block.number);
         uint64 _destination = _stations *
             uint64(train.config.cycleFreq) +
@@ -246,21 +251,69 @@ contract Ymarkt is Ownable, ReentrancyGuard {
         success = true;
     }
 
+    function burnTicket(address _train)
+        public
+        onlyTicketed(_train)
+        nonReentrant
+        returns (bool success)
+    {
+        Ticket memory ticket = userTrainTicket[msg.sender][_train];
+
+        uint256 _bagSize = ticket.bagSize;
+        address _returnToken = getTrainByPool[ticket.trainAddress]
+            .meta
+            .buybackToken;
+        /// @dev remove ticket from train
+
+        success = tokenOut(_returnToken, _bagSize);
+        userTrainTicket[msg.sender][_train] = userTrainTicket[address(0)][
+            address(0)
+        ];
+        decrementBag(_train, _bagSize);
+        decrementPassengers(_train);
+        /// @dev emit event
+    }
+
     //////// Public Functions
+    /////////////////////////////////
+
+    /////////////////////////////////
+    ////////  INTERNAL FUNCTIONS
+
+    function tokenOut(address _token, uint256 _amount)
+        internal
+        returns (bool success)
+    {
+        IERC20 token = IERC20(_token);
+        uint256 prev = token.balanceOf(address(this));
+        token.transfer(msg.sender, _amount);
+        require(
+            token.balanceOf(address(this)) >= (prev - _amount),
+            "token transfer failed"
+        );
+        success = true;
+    }
+
+    ////////  Internal Functions
     /////////////////////////////////
 
     /////////////////////////////////
     ////////  PRIVATE FUNCTIONS
 
-    function depositsBag(uint256 _bagSize, address _trainID)
+    function depositsBag(uint256 _bagSize, address _buybackToken)
         private
         returns (bool success)
     {
-        IERC20 token = IERC20(_trainID);
+        IERC20 token = IERC20(_buybackToken);
+
         uint256 _prevBalance = token.balanceOf(address(this));
-        require(token.transferFrom(msg.sender, address(this), _bagSize));
-        require(token.balanceOf(address(this)) >= _prevBalance + _bagSize);
-        success = true;
+        bool one = token.transferFrom(msg.sender, address(this), _bagSize);
+        bool two = token.balanceOf(address(this)) >= (_prevBalance + _bagSize);
+        if (one && two) {
+            success = true;
+        } else {
+            revert IssueOnDeposit(_bagSize, _buybackToken);
+        }
     }
 
     function incrementPassengers(address _trainId) private {

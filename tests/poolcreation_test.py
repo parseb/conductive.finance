@@ -1,7 +1,16 @@
 from distutils.log import error
 import pytest
-from brownie import convert, ZERO_ADDRESS, accounts, chain, rpc, reverts, web3
-import brownie
+from brownie import (
+    convert,
+    ZERO_ADDRESS,
+    accounts,
+    chain,
+    rpc,
+    reverts,
+    web3,
+    Contract,
+)
+from brownie_tokens import MintableForkToken
 
 
 def test_trainid_is_validatedbyby_uniswap_registry(yMarkt, uniswap):
@@ -73,14 +82,32 @@ def test_creates_ticket(yMarkt):
     train = "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8"
     previous_number_of_passengers = yMarkt.getTrain(train)[2]
     price = 9001
-    bagsize = 10000
+    bagsize = 100
     previous_tickets_onprice = len(yMarkt.getTicketsByPrice(train, price))
     previous_inCustody = yMarkt.getTrain(train)[3]
+    # usdcrich = "0x2A549b4AF9Ec39B03142DA6dC32221fC390B5533"
+
+    USDCtoken = MintableForkToken("0xA0B86991C6218B36C1D19D4A2E9EB0CE3606EB48")
+    USDCtoken.transfer(
+        accounts[0], USDCtoken.balanceOf(accounts[-1]), {"from": accounts[-1]}
+    )
+
+    chain.mine(2)
+    USDCtoken.approve(
+        yMarkt.address,
+        USDCtoken.balanceOf(accounts[0]),
+        {"from": accounts[0]},
+    )
+    chain.mine(1)
 
     ticket = yMarkt.createTicket(
-        100, price, "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8", bagsize
+        100,
+        price,
+        "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8",
+        100,
+        {"from": accounts[0]},
     )
-    chain.mine(2)
+
     assert ticket
     assert yMarkt.getTrain(train)[4] == previous_number_of_passengers + 1
     assert len(yMarkt.getTicketsByPrice(train, price)) == previous_tickets_onprice + 1
@@ -92,3 +119,21 @@ def test_creates_ticket(yMarkt):
     #     "typed error: 0x65ba9ff1000000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000008"
     # ):
     #     x =yMarkt.createTicket(100, price, "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8", 8)
+
+
+def test_burns_ticket(yMarkt):
+    train_prev = yMarkt.getTrain(
+        "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8", {"from": accounts[0]}
+    )
+
+    chain.mine(3)
+    ticket = yMarkt.getTicket(accounts[0], "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8")
+    chain.mine(1)
+    assert ticket[0] > 0 and ticket[1] < chain.height
+    yMarkt.burnTicket("0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8")
+
+    train_after = yMarkt.getTrain(
+        "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8", {"from": accounts[0]}
+    )
+    assert train_prev[3] > train_after[3]
+    assert train_prev[4] == train_after[4] + 1
