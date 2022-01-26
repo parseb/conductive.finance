@@ -7,17 +7,41 @@ pragma solidity 0.8.4;
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/access/Ownable.sol";
 import "Uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
 import "Uniswap/v3-core/contracts/interfaces/pool/IUniswapV3PoolImmutables.sol";
-//import {VaultAPI, BaseWrapper} from "@yearnvaults/contracts/BaseWrapper.sol";
+
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/security/ReentrancyGuard.sol";
+
+interface IVault {
+    function token() external view returns (address);
+
+    function underlying() external view returns (address);
+
+    function name() external view returns (string memory);
+
+    function symbol() external view returns (string memory);
+
+    function decimals() external view returns (uint8);
+
+    function controller() external view returns (address);
+
+    function governance() external view returns (address);
+
+    function getPricePerFullShare() external view returns (uint256);
+
+    function deposit(uint256) external;
+
+    function depositAll() external;
+
+    function withdraw(uint256) external;
+
+    function withdrawAll() external;
+}
 
 contract Ymarkt is Ownable, ReentrancyGuard {
     /// @dev Uniswap V3 Factory address used to validate token pair and price
 
-    IUniswapV3Factory uniswapV3 =
-        IUniswapV3Factory(0x1F98431c8aD98523631AE4a59f267346ea31F984);
-
-    //IUniswapV3PoolImmutables poolBasicMeta;
+    IUniswapV3Factory uniswapV3;
+    IVault yVault;
 
     struct operators {
         address trainConductor; //address of the pool owner/creator
@@ -65,7 +89,22 @@ contract Ymarkt is Ownable, ReentrancyGuard {
     /// @notice tickets fetchable by perunit price
     mapping(address => mapping(uint256 => Ticket[])) ticketsFromPrice;
 
-    constructor() {}
+    constructor() {
+        uniswapV3 = IUniswapV3Factory(
+            0x1F98431c8aD98523631AE4a59f267346ea31F984
+        );
+        yVault = IVault(0x9C13e225AE007731caA49Fd17A41379ab1a489F4);
+    }
+
+    ////////////////
+
+    function updateEnvironment(address _yv, address _uniswap) public onlyOwner {
+        require(_yv != address(0));
+        require(_uniswap != address(0));
+
+        uniswapV3 = IUniswapV3Factory(_uniswap);
+        yVault = IVault(_yv);
+    }
 
     ////////////////////////////////
     ///////  ERRORS
@@ -82,6 +121,8 @@ contract Ymarkt is Ownable, ReentrancyGuard {
 
     ////////////////////////////////
     ///////  EVENTS
+
+    event DepositNoVault(uint256 amount, address token);
 
     //////  Events
     ////////////////////////////////
@@ -217,15 +258,19 @@ contract Ymarkt is Ownable, ReentrancyGuard {
             revert ZeroValuesNotAllowed();
         }
 
+        bool hasVault;
         Train memory train = getTrainByPool[_trainAddress];
 
-        ///trainexists modifier
-        require(train.meta.uniPool != address(0), "Train not found");
+        /// @dev todo:check if vault
+        if (
+            train.meta.yVault != address(0) &&
+            yVault.underlying() == train.meta.buybackToken
+        ) hasVault = true;
 
         if (_bagSize < train.config.minBagSize)
             revert MinDepositRequired(train.config.minBagSize, _bagSize);
 
-        depositsBag(_bagSize, train.meta.buybackToken);
+        depositsBag(_bagSize, train.meta.buybackToken, hasVault);
 
         uint64 _departure = uint64(block.number);
         uint64 _destination = _stations *
@@ -248,6 +293,8 @@ contract Ymarkt is Ownable, ReentrancyGuard {
 
         ticketsFromPrice[_trainAddress][_perUnit].push(ticket);
 
+        ///@dev maybe pull payment wrapped token
+
         success = true;
     }
 
@@ -258,14 +305,22 @@ contract Ymarkt is Ownable, ReentrancyGuard {
         returns (bool success)
     {
         Ticket memory ticket = userTrainTicket[msg.sender][_train];
+        Train memory train = getTrainByPool[ticket.trainAddress];
 
         uint256 _bagSize = ticket.bagSize;
-        address _returnToken = getTrainByPool[ticket.trainAddress]
-            .meta
-            .buybackToken;
-        /// @dev remove ticket from train
+        address _returnToken = train.meta.buybackToken;
+        bool hasVault = train.meta.yVault != address(0);
 
-        success = tokenOut(_returnToken, _bagSize);
+        if (hasVault) {
+            success = tokenOutNoVault(_returnToken, _bagSize);
+        } else {
+            success = tokenOutWithVault(
+                _returnToken,
+                _bagSize,
+                train.meta.yVault
+            );
+        }
+
         userTrainTicket[msg.sender][_train] = userTrainTicket[address(0)][
             address(0)
         ];
@@ -280,11 +335,27 @@ contract Ymarkt is Ownable, ReentrancyGuard {
     /////////////////////////////////
     ////////  INTERNAL FUNCTIONS
 
-    function tokenOut(address _token, uint256 _amount)
+    function tokenOutNoVault(address _token, uint256 _amount)
         internal
         returns (bool success)
     {
         IERC20 token = IERC20(_token);
+        uint256 prev = token.balanceOf(address(this));
+        token.transfer(msg.sender, _amount);
+        require(
+            token.balanceOf(address(this)) >= (prev - _amount),
+            "token transfer failed"
+        );
+        success = true;
+    }
+
+    function tokenOutWithVault(
+        address _token,
+        uint256 _amount,
+        address _vault
+    ) internal returns (bool success) {
+        IERC20 token = IERC20(_token);
+
         uint256 prev = token.balanceOf(address(this));
         token.transfer(msg.sender, _amount);
         require(
@@ -300,19 +371,33 @@ contract Ymarkt is Ownable, ReentrancyGuard {
     /////////////////////////////////
     ////////  PRIVATE FUNCTIONS
 
-    function depositsBag(uint256 _bagSize, address _buybackToken)
-        private
-        returns (bool success)
-    {
+    function depositsBag(
+        uint256 _bagSize,
+        address _buybackToken,
+        bool _hasVault
+    ) private returns (bool success) {
         IERC20 token = IERC20(_buybackToken);
 
         uint256 _prevBalance = token.balanceOf(address(this));
         bool one = token.transferFrom(msg.sender, address(this), _bagSize);
-        bool two = token.balanceOf(address(this)) >= (_prevBalance + _bagSize);
+        uint256 _currentBalance = token.balanceOf(address(this));
+        bool two = _currentBalance >= (_prevBalance + _bagSize);
         if (one && two) {
             success = true;
         } else {
             revert IssueOnDeposit(_bagSize, _buybackToken);
+        }
+
+        if (_hasVault) {
+            token.approve(yVault.token(), _bagSize);
+            yVault.depositAll();
+            require(
+                _currentBalance > token.balanceOf(address(this)),
+                "vault deposit failed"
+            );
+        } else {
+            /// @dev since vaults cannot be created, deposit for yield... somewhere.
+            emit DepositNoVault(_bagSize, _buybackToken);
         }
     }
 
