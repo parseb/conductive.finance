@@ -40,11 +40,10 @@ def test_becomes_valid_pool(yMarkt, uniswap):
         YFI,
         3000,
         ZERO_ADDRESS,
-        cycle_freq,
-        min_cycles * cycle_freq,
-        budget_slice,
-        price_memory,
+        [cycle_freq, min_cycles * cycle_freq, budget_slice, price_memory],
         minbag,
+        True,
+        True,
     )
 
     assert yMarkt.isValidPool(STASIS, YFI, "3000") != ZERO_ADDRESS
@@ -67,15 +66,14 @@ def test_create_train_returns_true(yMarkt, addrzero, uniswap):
         WETH,
         3000,
         addrzero,
-        cycle_freq,
-        min_cycles * cycle_freq,
-        budget_slice,
-        price_memory,
+        [cycle_freq, min_cycles * cycle_freq, budget_slice, price_memory],
         minbag,
+        True,
+        True,
     )
     train_1 = yMarkt.getTrain(USDCWETH)
     assert yMarkt.isValidPool(USDC, WETH, "3000") != ZERO_ADDRESS
-    assert train_1[0][0] == accounts[0]
+    assert accounts[0].address == yMarkt.owner()
 
 
 def test_creates_ticket(yMarkt):
@@ -144,15 +142,7 @@ def test_creates_train_with_vault(yMarkt):
     YFIrich = "0x34a4c5d747f54d5e3a3f66eb6ef3f697f474fd90"
 
     assert yMarkt.createTrain(
-        YFI.address,
-        DAI.address,
-        3000,
-        YFIvault,
-        100,
-        20000,
-        30,
-        40000,
-        0.01,
+        YFI.address, DAI.address, 3000, YFIvault, [100, 20000, 30, 10], 44, True, True
     )
 
 
@@ -196,4 +186,8 @@ def burns_vault_ticket(yMarkt):
 
     ## burn ticket
 
+    assert False
+
+
+def checks_seating_functionality(yMarkt):
     assert False

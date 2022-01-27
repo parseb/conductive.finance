@@ -10,6 +10,7 @@ import "Uniswap/v3-core/contracts/interfaces/pool/IUniswapV3PoolImmutables.sol";
 
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/security/ReentrancyGuard.sol";
+import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/token/ERC721/ERC721.sol";
 
 interface IVault {
     function token() external view returns (address);
@@ -37,26 +38,29 @@ interface IVault {
     function withdrawAll() external;
 }
 
-contract Ymarkt is Ownable, ReentrancyGuard {
+contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
     /// @dev Uniswap V3 Factory address used to validate token pair and price
 
     IUniswapV3Factory uniswapV3;
     IVault yVault;
+    uint256 clicker;
 
     struct operators {
-        address trainConductor; //address of the pool owner/creator
         address denominatorToken; //quote token contract address
         address buybackToken; //buyback token contract address
         address uniPool; //address of the uniswap pool ^
         address yVault; //address of yVault if any
+        bool withSeating; // issues NFT
     }
 
     struct configdata {
-        uint32 cycleFreq; // sleepy blocks nr of
-        uint32 minDistance; //min distance of block travel for reward
-        uint16 budgetSlicer; // spent per cycle % (0 - 10000 0.01%-100%)
-        uint16 upperRewardBound; // upper reward bound determiner
+        // uint32 cycleFreq; // sleepy blocks nr of
+        // uint32 minDistance; //min distance of block travel for reward
+        // uint16 budgetSlicer; // spent per cycle % (0 - 10000 0.01%-100%)
+        // uint16 upperRewardBound; // upper reward bound determiner
         uint32 minBagSize; // min bag size
+        uint64[4] cycleParams; // [cycleFreq, minDistance, budgetSlicer, upperRewardBound]
+        bool controlledSpeed; // if true, facilitate speed management
     }
 
     struct Train {
@@ -75,6 +79,7 @@ contract Ymarkt is Ownable, ReentrancyGuard {
         uint256 bagSize; //amount token
         uint256 perUnit; //buyout price
         address trainAddress; //train ID (pair pool)
+        uint256 nftid; //nft id
     }
 
     /// @notice gets Ticket of [user] for [train]
@@ -94,6 +99,7 @@ contract Ymarkt is Ownable, ReentrancyGuard {
             0x1F98431c8aD98523631AE4a59f267346ea31F984
         );
         yVault = IVault(0x9C13e225AE007731caA49Fd17A41379ab1a489F4);
+        clicker = 1;
     }
 
     ////////////////
@@ -170,6 +176,13 @@ contract Ymarkt is Ownable, ReentrancyGuard {
         _;
     }
 
+    modifier zeroNotAllowed(uint64[4] memory _params) {
+        for (uint8 i = 0; i < 4; i++) {
+            if (_params[i] < 1) revert ZeroValuesNotAllowed();
+        }
+        _;
+    }
+
     ///////   Modifiers
     /////////////////////////////////
 
@@ -181,21 +194,11 @@ contract Ymarkt is Ownable, ReentrancyGuard {
         address _budgetToken,
         uint24 _uniTier,
         address _yVault,
-        uint32 _cycleFreq,
-        uint32 _minDistance,
-        uint16 _budgetSlicer,
-        uint16 _upperRewardBound,
-        uint32 _minBagSize
-    ) public returns (bool successCreated) {
-        if (
-            _cycleFreq <= 1 ||
-            _minDistance <= 1 ||
-            _budgetSlicer == 0 ||
-            _upperRewardBound == 0
-        ) {
-            revert ZeroValuesNotAllowed();
-        }
-
+        uint64[4] memory _cycleParams,
+        uint32 _minBagSize,
+        bool _NFT,
+        bool _levers
+    ) public zeroNotAllowed(_cycleParams) returns (bool successCreated) {
         address uniPool = isValidPool(_buybackToken, _budgetToken, _uniTier);
 
         if (uniPool == address(0)) {
@@ -210,22 +213,20 @@ contract Ymarkt is Ownable, ReentrancyGuard {
 
         getTrainByPool[uniPool] = Train({
             meta: operators({
-                trainConductor: msg.sender,
                 yVault: _yVault,
                 denominatorToken: _budgetToken,
                 buybackToken: _buybackToken,
-                uniPool: uniPool
+                uniPool: uniPool,
+                withSeating: _NFT
             }),
             yieldSharesTotal: 0,
             passengers: 0,
             budget: 0,
             inCustody: 0,
             config: configdata({
-                cycleFreq: _cycleFreq,
-                minDistance: _minDistance,
-                budgetSlicer: _budgetSlicer,
-                upperRewardBound: _upperRewardBound,
-                minBagSize: _minBagSize
+                cycleParams: _cycleParams,
+                minBagSize: _minBagSize,
+                controlledSpeed: _levers
             })
         });
 
@@ -274,7 +275,7 @@ contract Ymarkt is Ownable, ReentrancyGuard {
 
         uint64 _departure = uint64(block.number);
         uint64 _destination = _stations *
-            uint64(train.config.cycleFreq) +
+            train.config.cycleParams[0] +
             _departure;
 
         Ticket memory ticket = Ticket({
@@ -283,8 +284,11 @@ contract Ymarkt is Ownable, ReentrancyGuard {
             rewarded: 0,
             bagSize: _bagSize,
             perUnit: _perUnit,
-            trainAddress: _trainAddress
+            trainAddress: _trainAddress,
+            nftid: clicker
         });
+
+        _safeMint(msg.sender, clicker);
 
         userTrainTicket[msg.sender][_trainAddress] = ticket;
 
@@ -292,6 +296,7 @@ contract Ymarkt is Ownable, ReentrancyGuard {
         incrementBag(_trainAddress, _bagSize);
 
         ticketsFromPrice[_trainAddress][_perUnit].push(ticket);
+        clicker++;
 
         ///@dev maybe pull payment wrapped token
 
