@@ -5,4 +5,4 @@ yMarkt is a buyback market maker that aims to facilitate token acqusitions at pr
 or
 
 ##### this is a story about a train
-![](https://i.imgur.com/WYrEfCL.png)
+![yTrain](https://i.imgur.com/nuzDOBh.png)
