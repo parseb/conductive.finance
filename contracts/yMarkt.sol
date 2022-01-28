@@ -12,30 +12,121 @@ import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20.so
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/security/ReentrancyGuard.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/token/ERC721/ERC721.sol";
 
-interface IVault {
+interface IVault is IERC20 {
+    function name() external view returns (string calldata);
+
+    function symbol() external view returns (string calldata);
+
+    function decimals() external view returns (uint256);
+
+    function apiVersion() external pure returns (string memory);
+
+    function permit(
+        address owner,
+        address spender,
+        uint256 amount,
+        uint256 expiry,
+        bytes calldata signature
+    ) external returns (bool);
+
+    // NOTE: Vyper produces multiple signatures for a given function with "default" args
+    function deposit() external returns (uint256);
+
+    function deposit(uint256 amount) external returns (uint256);
+
+    function deposit(uint256 amount, address recipient)
+        external
+        returns (uint256);
+
+    // NOTE: Vyper produces multiple signatures for a given function with "default" args
+    function withdraw() external returns (uint256);
+
+    function withdraw(uint256 maxShares) external returns (uint256);
+
+    function withdraw(uint256 maxShares, address recipient)
+        external
+        returns (uint256);
+
     function token() external view returns (address);
 
-    function underlying() external view returns (address);
+    // function strategies(address _strategy)
+    //     external
+    //     view
+    //     returns (StrategyParams memory);
 
-    function name() external view returns (string memory);
+    function pricePerShare() external view returns (uint256);
 
-    function symbol() external view returns (string memory);
+    function totalAssets() external view returns (uint256);
 
-    function decimals() external view returns (uint8);
+    function depositLimit() external view returns (uint256);
 
-    function controller() external view returns (address);
+    function maxAvailableShares() external view returns (uint256);
 
+    /**
+     * View how much the Vault would increase this Strategy's borrow limit,
+     * based on its present performance (since its last report). Can be used to
+     * determine expectedReturn in your Strategy.
+     */
+    function creditAvailable() external view returns (uint256);
+
+    /**
+     * View how much the Vault would like to pull back from the Strategy,
+     * based on its present performance (since its last report). Can be used to
+     * determine expectedReturn in your Strategy.
+     */
+    function debtOutstanding() external view returns (uint256);
+
+    /**
+     * View how much the Vault expect this Strategy to return at the current
+     * block, based on its present performance (since its last report). Can be
+     * used to determine expectedReturn in your Strategy.
+     */
+    function expectedReturn() external view returns (uint256);
+
+    /**
+     * This is the main contact point where the Strategy interacts with the
+     * Vault. It is critical that this call is handled as intended by the
+     * Strategy. Therefore, this function will be called by BaseStrategy to
+     * make sure the integration is correct.
+     */
+    function report(
+        uint256 _gain,
+        uint256 _loss,
+        uint256 _debtPayment
+    ) external returns (uint256);
+
+    /**
+     * This function should only be used in the scenario where the Strategy is
+     * being retired but no migration of the positions are possible, or in the
+     * extreme scenario that the Strategy needs to be put into "Emergency Exit"
+     * mode in order for it to exit as quickly as possible. The latter scenario
+     * could be for any reason that is considered "critical" that the Strategy
+     * exits its position as fast as possible, such as a sudden change in
+     * market conditions leading to losses, or an imminent failure in an
+     * external dependency.
+     */
+    function revokeStrategy() external;
+
+    /**
+     * View the governance address of the Vault to assert privileged functions
+     * can only be called by governance. The Strategy serves the Vault, so it
+     * is subject to governance defined by the Vault.
+     */
     function governance() external view returns (address);
 
-    function getPricePerFullShare() external view returns (uint256);
+    /**
+     * View the management address of the Vault to assert privileged functions
+     * can only be called by management. The Strategy serves the Vault, so it
+     * is subject to management defined by the Vault.
+     */
+    function management() external view returns (address);
 
-    function deposit(uint256) external;
-
-    function depositAll() external;
-
-    function withdraw(uint256) external;
-
-    function withdrawAll() external;
+    /**
+     * View the guardian address of the Vault to assert privileged functions
+     * can only be called by guardian. The Strategy serves the Vault, so it
+     * is subject to guardian defined by the Vault.
+     */
+    function guardian() external view returns (address);
 }
 
 contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
@@ -58,8 +149,8 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         // uint32 minDistance; //min distance of block travel for reward
         // uint16 budgetSlicer; // spent per cycle % (0 - 10000 0.01%-100%)
         // uint16 upperRewardBound; // upper reward bound determiner
-        uint32 minBagSize; // min bag size
         uint64[4] cycleParams; // [cycleFreq, minDistance, budgetSlicer, upperRewardBound]
+        uint32 minBagSize; // min bag size
         bool controlledSpeed; // if true, facilitate speed management
     }
 
@@ -98,7 +189,7 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         uniswapV3 = IUniswapV3Factory(
             0x1F98431c8aD98523631AE4a59f267346ea31F984
         );
-        yVault = IVault(0x9C13e225AE007731caA49Fd17A41379ab1a489F4);
+        //yVault = IVault(0x9C13e225AE007731caA49Fd17A41379ab1a489F4);
         clicker = 1;
     }
 
@@ -109,7 +200,7 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         require(_uniswap != address(0));
 
         uniswapV3 = IUniswapV3Factory(_uniswap);
-        yVault = IVault(_yv);
+        //yVault = IVault(_yv);
     }
 
     ////////////////////////////////
@@ -261,17 +352,13 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
 
         bool hasVault;
         Train memory train = getTrainByPool[_trainAddress];
-
+        address tokenAddress = train.meta.buybackToken;
+        if (train.meta.yVault != address(0)) {
+            yVault = IVault(train.meta.yVault);
+            if (yVault.token() == train.meta.buybackToken) hasVault = true;
+        }
         /// @dev todo:check if vault
-        if (
-            train.meta.yVault != address(0) &&
-            yVault.underlying() == train.meta.buybackToken
-        ) hasVault = true;
-
-        if (_bagSize < train.config.minBagSize)
-            revert MinDepositRequired(train.config.minBagSize, _bagSize);
-
-        depositsBag(_bagSize, train.meta.buybackToken, hasVault);
+        depositsBag(_bagSize, tokenAddress, hasVault);
 
         uint64 _departure = uint64(block.number);
         uint64 _destination = _stations *
@@ -293,7 +380,6 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         userTrainTicket[msg.sender][_trainAddress] = ticket;
 
         incrementPassengers(_trainAddress);
-        incrementBag(_trainAddress, _bagSize);
 
         ticketsFromPrice[_trainAddress][_perUnit].push(ticket);
         clicker++;
@@ -310,20 +396,25 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         returns (bool success)
     {
         Ticket memory ticket = userTrainTicket[msg.sender][_train];
-        Train memory train = getTrainByPool[ticket.trainAddress];
 
+        require(ticket.bagSize > 0, "Already Burned");
+
+        Train memory train = getTrainByPool[ticket.trainAddress];
         uint256 _bagSize = ticket.bagSize;
         address _returnToken = train.meta.buybackToken;
         bool hasVault = train.meta.yVault != address(0);
 
         if (hasVault) {
-            success = tokenOutNoVault(_returnToken, _bagSize);
-        } else {
+            yVault = IVault(train.meta.yVault);
+            // @dev necessary?
+            require(yVault.token() == train.meta.buybackToken);
             success = tokenOutWithVault(
                 _returnToken,
                 _bagSize,
                 train.meta.yVault
             );
+        } else {
+            success = tokenOutNoVault(_returnToken, _bagSize);
         }
 
         userTrainTicket[msg.sender][_train] = userTrainTicket[address(0)][
@@ -331,7 +422,19 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         ];
         decrementBag(_train, _bagSize);
         decrementPassengers(_train);
+
         /// @dev emit event
+    }
+
+    function trainStation(address _trainAddress)
+        public
+        nonReentrant
+        returns (bool success)
+    {
+        require(isInStation(_trainAddress), "Train moving. Chu... Chu!");
+
+        lastStation[_trainAddress] = uint64(block.number);
+        success = true;
     }
 
     //////// Public Functions
@@ -362,12 +465,15 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         IERC20 token = IERC20(_token);
 
         uint256 prev = token.balanceOf(address(this));
-        token.transfer(msg.sender, _amount);
+
+        ///@dev withdraw exact quantity from vault (! shares)!!
+        uint256 amount2 = yVault.withdraw(_amount);
+        require(amount2 == _amount, "vault withdrawal vault");
         require(
-            token.balanceOf(address(this)) >= (prev - _amount),
-            "token transfer failed"
+            token.balanceOf(address(this)) >= (prev + _amount),
+            "inadequate balance after vault pull"
         );
-        success = true;
+        success = token.transfer(msg.sender, _amount);
     }
 
     ////////  Internal Functions
@@ -389,20 +495,9 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         bool two = _currentBalance >= (_prevBalance + _bagSize);
         if (one && two) {
             success = true;
+            //incrementBag(_trainAddress, _bagSize);
         } else {
             revert IssueOnDeposit(_bagSize, _buybackToken);
-        }
-
-        if (_hasVault) {
-            token.approve(yVault.token(), _bagSize);
-            yVault.depositAll();
-            require(
-                _currentBalance > token.balanceOf(address(this)),
-                "vault deposit failed"
-            );
-        } else {
-            /// @dev since vaults cannot be created, deposit for yield... somewhere.
-            emit DepositNoVault(_bagSize, _buybackToken);
         }
     }
 
@@ -462,7 +557,19 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
     {
         train = getTrainByPool[_trainAddress];
     }
-}
 
-//////// View Functions
-//////////////////////////////////
+    function isInStation(address _trainAddress)
+        public
+        view
+        returns (bool inStation)
+    {
+        Train memory train = getTrainByPool[_trainAddress];
+        uint64 minStationDistance = train.config.cycleParams[0];
+        if ((minStationDistance + lastStation[_trainAddress]) < block.number) {
+            inStation = true;
+        }
+    }
+
+    //////// View Functions
+    //////////////////////////////////
+}

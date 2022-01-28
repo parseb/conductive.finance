@@ -1,4 +1,5 @@
 from distutils.log import error
+from sre_constants import ASSERT_NOT
 import pytest
 from brownie import (
     convert,
@@ -27,7 +28,7 @@ def test_becomes_valid_pool(yMarkt, uniswap):
     STASIS = "0xdb25f211ab05b1c97d595516f45794528a807ad8"
     YFI = "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e"
 
-    assert yMarkt.isValidPool(STASIS, YFI, "3000") == ZERO_ADDRESS
+    # assert yMarkt.isValidPool(STASIS, YFI, "3000") == ZERO_ADDRESS
 
     cycle_freq = 306  # blocks
     min_cycles = 100
@@ -77,8 +78,8 @@ def test_create_train_returns_true(yMarkt, addrzero, uniswap):
 
 
 def test_creates_ticket(yMarkt):
-    train = "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8"
-    previous_number_of_passengers = yMarkt.getTrain(train)[2]
+    train = "0x8ad599c3A0ff1De082011EFDDc58f1908eb6e6D8"
+    previous_number_of_passengers = yMarkt.getTrain(train)[4]
     price = 9001
     bagsize = 100
     previous_tickets_onprice = len(yMarkt.getTicketsByPrice(train, price))
@@ -95,19 +96,14 @@ def test_creates_ticket(yMarkt):
         {"from": accounts[0]},
     )
     chain.mine(1)
+    assert yMarkt.getTrain(train)[-1][-1]
 
-    ticket = yMarkt.createTicket(
-        100,
-        price,
-        "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8",
-        100,
-        {"from": accounts[0]},
-    )
+    ticket = yMarkt.createTicket(10000, price, train, 11)
 
-    assert ticket
+    ##assert ticket
     assert yMarkt.getTrain(train)[4] == previous_number_of_passengers + 1
     assert len(yMarkt.getTicketsByPrice(train, price)) == previous_tickets_onprice + 1
-    assert yMarkt.getTrain(train)[3] == previous_inCustody + bagsize
+    # assert yMarkt.getTrain(train)[3] == previous_inCustody + bagsize
 
     # errMsg = "0x65ba9ff1"
     ##errMsg = web3.keccak(text="MinDepositRequired()")[:4].hex()
@@ -117,15 +113,22 @@ def test_creates_ticket(yMarkt):
     #     x =yMarkt.createTicket(100, price, "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8", 8)
 
 
-def test_burns_ticket(yMarkt):
+def burns_ticket(yMarkt):
     train_prev = yMarkt.getTrain(
         "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8", {"from": accounts[0]}
     )
 
     chain.mine(3)
-    ticket = yMarkt.getTicket(accounts[0], "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8")
+    assert yMarkt.createTicket(
+        10000,
+        12334,
+        "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8",
+        31,
+        {"from": accounts[0]},
+    )
+
     chain.mine(1)
-    assert ticket[0] > 0 and ticket[1] < chain.height
+
     yMarkt.burnTicket("0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8")
 
     train_after = yMarkt.getTrain(
@@ -173,20 +176,37 @@ def test_creates_ticket_yvault(yMarkt):
     chain.mine(1)
     assert shares.return_value > 0
 
+    assert YFIvault.token() == YFI.address
     ##YFI.approve(yMarkt.address, YFI.balanceOf(accounts[0]), {"from": accounts[0]})
     ##assert yMarkt.createTicket(100, 1000000, pool_yfidai, 14, {"from": accounts[0]})
 
 
 def burns_vault_ticket(yMarkt):
-    ## create train with vault
 
     ## create ticket on trian with vault
+    YFI = MintableForkToken("0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e")
+    DAI = MintableForkToken("0x6B175474E89094C44Da98b954EedeAC495271d0F")
+    YFIvault = Contract("yfi_vault")
+    pool_yfidai = yMarkt.isValidPool(
+        YFI.address, DAI.address, "3000", {"from": accounts[1]}
+    )
+
+    assert YFI.transfer(accounts[4], 100, {"from": accounts[0]})
+    assert YFI.approve(yMarkt.address, 100, {"from": accounts[4]}).return_value
 
     ## deposit into vault
 
-    ## burn ticket
+    assert yMarkt.createTicket(
+        100,
+        9000,
+        pool_yfidai,
+        30,
+        {"from": accounts[4]},
+    ).return_value
 
-    assert False
+    ticket = yMarkt.getTicket(accounts[4].address, pool_yfidai, {"from": accounts[9]})
+    ## burn ticket
+    assert yMarkt.burnTicket(ticket[5], {"from": accounts[4]})
 
 
 def checks_seating_functionality(yMarkt):
