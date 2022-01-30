@@ -113,31 +113,6 @@ def test_creates_ticket(yMarkt):
     #     x =yMarkt.createTicket(100, price, "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8", 8)
 
 
-def burns_ticket(yMarkt):
-    train_prev = yMarkt.getTrain(
-        "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8", {"from": accounts[0]}
-    )
-
-    chain.mine(3)
-    assert yMarkt.createTicket(
-        10000,
-        12334,
-        "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8",
-        31,
-        {"from": accounts[0]},
-    )
-
-    chain.mine(1)
-
-    yMarkt.burnTicket("0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8")
-
-    train_after = yMarkt.getTrain(
-        "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8", {"from": accounts[0]}
-    )
-    assert train_prev[3] > train_after[3]
-    assert train_prev[4] == train_after[4] + 1
-
-
 def test_creates_train_with_vault(yMarkt):
     YFI = MintableForkToken("0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e")
     DAI = MintableForkToken("0x6B175474E89094C44Da98b954EedeAC495271d0F")
@@ -179,6 +154,37 @@ def test_creates_ticket_yvault(yMarkt):
     assert YFIvault.token() == YFI.address
     ##YFI.approve(yMarkt.address, YFI.balanceOf(accounts[0]), {"from": accounts[0]})
     ##assert yMarkt.createTicket(100, 1000000, pool_yfidai, 14, {"from": accounts[0]})
+
+
+def test_burns_ticket(yMarkt):
+
+    train_prev = yMarkt.getTrain(
+        "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8", {"from": accounts[0]}
+    )
+
+    chain.mine(3)
+    # assert yMarkt.createTicket(
+    #     10000,
+    #     12334,
+    #     "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8",
+    #     31,
+    #     {"from": accounts[0]},
+    # )
+
+    chain.mine(1)
+
+    yMarkt.burnTicket(
+        "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8", {"from": accounts[0]}
+    )
+
+    train_after = yMarkt.getTrain(
+        "0x8AD599C3A0FF1DE082011EFDDC58F1908EB6E6D8", {"from": accounts[0]}
+    )
+    assert train_prev[3] > train_after[3]
+    assert train_prev[4] == train_after[4] + 1
+
+
+########_later_########################################################################
 
 
 def burns_vault_ticket(yMarkt):
