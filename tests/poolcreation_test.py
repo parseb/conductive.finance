@@ -39,7 +39,6 @@ def test_becomes_valid_pool(yMarkt, uniswap):
     assert yMarkt.createTrain(
         STASIS,
         YFI,
-        ZERO_ADDRESS,
         [cycle_freq, min_cycles * cycle_freq, budget_slice, price_memory],
         minbag,
         True,
@@ -64,7 +63,6 @@ def test_create_train_returns_true(yMarkt, addrzero, uniswap):
     assert yMarkt.createTrain(
         USDC,
         WETH,
-        addrzero,
         [cycle_freq, min_cycles * cycle_freq, budget_slice, price_memory],
         minbag,
         True,
@@ -120,7 +118,7 @@ def test_creates_train_with_vault(yMarkt):
     YFIrich = "0x34a4c5d747f54d5e3a3f66eb6ef3f697f474fd90"
 
     assert yMarkt.createTrain(
-        YFI.address, DAI.address, YFIvault, [100, 20000, 30, 10], 9, True, True
+        YFI.address, DAI.address, [100, 20000, 30, 10], 9, True, True
     )
 
 
@@ -183,31 +181,41 @@ def test_burns_ticket(yMarkt):
 ########_later_########################################################################
 
 
-def burns_vault_ticket(yMarkt):
+def test_burns_vault_ticket(yMarkt):
 
     ## create ticket on trian with vault
     YFI = MintableForkToken("0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e")
     DAI = MintableForkToken("0x6B175474E89094C44Da98b954EedeAC495271d0F")
     YFIvault = Contract("yfi_vault")
     pool_yfidai = yMarkt.isValidPool(YFI.address, DAI.address, {"from": accounts[1]})
-
+    assert pool_yfidai != ZERO_ADDRESS
     assert YFI.transfer(accounts[4], 100, {"from": accounts[0]})
     assert YFI.approve(yMarkt.address, 100, {"from": accounts[4]}).return_value
-
+    quantity = 31
     ## deposit into vault
-
+    prev_yfi_balance = YFI.balanceOf(accounts[4])
     assert yMarkt.createTicket(
         1,
         9000,
         pool_yfidai,
-        31,
+        quantity,
         {"from": accounts[4]},
-    ).return_value
+    )
 
+    chain.mine(1)
     ticket = yMarkt.getTicket(accounts[4].address, pool_yfidai, {"from": accounts[9]})
     ## burn ticket
-    assert yMarkt.burnTicket(ticket[5], {"from": accounts[4]})
+    assert YFI.balanceOf(accounts[4].address) == prev_yfi_balance - quantity
+    assert yMarkt.burnTicket(ticket[4], {"from": accounts[4]})
+    assert YFI.balanceOf(accounts[4].address) == prev_yfi_balance
+
+    ticket = yMarkt.getTicket(accounts[4].address, pool_yfidai, {"from": accounts[9]})
+    assert ticket[0] == ZERO_ADDRESS
+    assert ticket[1] == ZERO_ADDRESS
+    assert ticket[2] == 0
+    assert ticket[3] == 0
+    assert ticket[4] == ZERO_ADDRESS
 
 
 def checks_seating_functionality(yMarkt):
-    assert False
+    return True
