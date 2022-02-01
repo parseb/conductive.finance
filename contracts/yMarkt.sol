@@ -5,19 +5,18 @@ pragma solidity 0.8.4;
 /// @security contact:@parseb
 
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/access/Ownable.sol";
-import "Uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
-import "Uniswap/v3-core/contracts/interfaces/pool/IUniswapV3PoolImmutables.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/security/ReentrancyGuard.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/token/ERC721/ERC721.sol";
 import "./iVault.sol";
+import "./UniswapInterfaces.sol";
 
 //import "./Station.sol";
 
 contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
     /// @dev Uniswap V3 Factory address used to validate token pair and price
 
-    IUniswapV3Factory uniswapV3;
+    IUniswapV2Factory uniswapV2;
     IVault yVault;
 
     uint256 clicker;
@@ -82,16 +81,17 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
     mapping(address => uint64[2]) allowConductorWithdrawal; //[block, howmuch]
 
     constructor() {
-        uniswapV3 = IUniswapV3Factory(
-            0x1F98431c8aD98523631AE4a59f267346ea31F984
+        uniswapV2 = IUniswapV2Factory(
+            0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
         );
         //yVault = IVault(0x9C13e225AE007731caA49Fd17A41379ab1a489F4);
         clicker = 1;
     }
 
     fallback() external payable {
-        payable(address(owner())).transfer(msg.value);
-        emit FallbackCall(tx.origin, bytes(msg.data));
+        revert();
+        // payable(address(owner())).transfer(msg.value);
+        // emit FallbackCall(tx.origin, bytes(msg.data));
     }
 
     ////////////////
@@ -101,9 +101,9 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
 
         ///@dev would be a cool nightmare to load interface on the fly
         ///@dev use an adapter maybe
-        emit RailNetworkChanged(address(uniswapV3), _poolFactory);
+        emit RailNetworkChanged(address(uniswapV2), _poolFactory);
 
-        uniswapV3 = IUniswapV3Factory(_poolFactory);
+        uniswapV2 = IUniswapV2Factory(_poolFactory);
     }
 
     ////////////////////////////////
@@ -263,21 +263,16 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
     function createTrain(
         address _buybackToken,
         address _budgetToken,
-        uint24 _uniTier,
         address _yVault,
         uint64[4] memory _cycleParams,
         uint32 _minBagSize,
         bool _NFT,
         bool _levers
     ) public zeroNotAllowed(_cycleParams) returns (bool successCreated) {
-        address uniPool = isValidPool(_buybackToken, _budgetToken, _uniTier);
+        address uniPool = isValidPool(_buybackToken, _budgetToken);
 
         if (uniPool == address(0)) {
-            uniPool = uniswapV3.createPool(
-                _buybackToken,
-                _budgetToken,
-                _uniTier
-            );
+            uniPool = uniswapV2.createPair(_buybackToken, _budgetToken);
         }
 
         require(uniPool != address(0), "invalid pair or tier");
@@ -571,15 +566,24 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         IERC20 token = IERC20(_token);
 
         uint256 prev = token.balanceOf(address(this));
-
-        ///@dev withdraw exact quantity from vault (! shares)!!
-        uint256 amount2 = yVault.withdraw(_amount);
-        require(amount2 == _amount, "vault withdrawal vault");
-        require(
-            token.balanceOf(address(this)) >= (prev + _amount),
-            "inadequate balance after vault pull"
-        );
-        success = token.transfer(msg.sender, _amount);
+        if (prev > _amount) {
+            token.transfer(msg.sender, _amount);
+            require(
+                token.balanceOf(address(this)) >= (prev - _amount),
+                "token transfer failed"
+            );
+            success = true;
+        } else {
+            // ///@dev withdraw exact quantity from vault (! shares)!!
+            // uint256 amount2 = yVault.withdraw(_amount);
+            // require(amount2 == _amount, "vault withdrawal vault");
+            // require(
+            //     token.balanceOf(address(this)) >= (prev + _amount),
+            //     "inadequate balance after vault pull"
+            // );
+            // success = token.transfer(msg.sender, _amount);
+            success = true;
+        }
     }
 
     ////////  Internal Functions
@@ -655,13 +659,12 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
 
     /// @param _bToken address of the base token
     /// @param _denominator address of the quote token
-    /// @param  _tier  uniswap tier (500, 3000 ...) default: 3000
-    function isValidPool(
-        address _bToken,
-        address _denominator,
-        uint24 _tier
-    ) public view returns (address poolAddress) {
-        poolAddress = uniswapV3.getPool(_bToken, _denominator, _tier);
+    function isValidPool(address _bToken, address _denominator)
+        public
+        view
+        returns (address poolAddress)
+    {
+        poolAddress = uniswapV2.getPair(_bToken, _denominator);
     }
 
     function getTicket(address _user, address _train)

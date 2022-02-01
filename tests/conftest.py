@@ -17,7 +17,9 @@ def yMarkt(Ymarkt, accounts):
 
 @pytest.fixture(scope="module")
 def uniswap():
-    yield Contract.from_explorer("0x1F98431c8aD98523631AE4a59f267346ea31F984")
+    univ2 = Contract.from_explorer("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f")
+    # univ2.set_alias("uniswap")
+    yield univ2
 
 
 @pytest.fixture(scope="module")
