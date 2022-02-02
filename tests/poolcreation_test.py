@@ -42,7 +42,6 @@ def test_becomes_valid_pool(yMarkt, uniswap):
         [cycle_freq, min_cycles * cycle_freq, budget_slice, price_memory],
         minbag,
         True,
-        True,
     )
 
     assert yMarkt.isValidPool(STASIS, YFI) != ZERO_ADDRESS
@@ -65,7 +64,6 @@ def test_create_train_returns_true(yMarkt, addrzero, uniswap):
         WETH,
         [cycle_freq, min_cycles * cycle_freq, budget_slice, price_memory],
         minbag,
-        True,
         True,
     )
     train_1 = yMarkt.getTrain(USDCWETH)
@@ -117,9 +115,7 @@ def test_creates_train_with_vault(yMarkt):
     YFIvault = "0xdb25ca703181e7484a155dd612b06f57e12be5f0"
     YFIrich = "0x34a4c5d747f54d5e3a3f66eb6ef3f697f474fd90"
 
-    assert yMarkt.createTrain(
-        YFI.address, DAI.address, [100, 20000, 30, 10], 9, True, True
-    )
+    assert yMarkt.createTrain(YFI.address, DAI.address, [100, 20000, 30, 10], 9, True)
 
 
 def test_creates_ticket_yvault(yMarkt):

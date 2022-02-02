@@ -28,14 +28,13 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
     mapping(address => Ticket[]) public offBoardingQueue;
 
     struct operators {
-        address denominatorToken; //quote token contract address
         address buybackToken; //buyback token contract address
+        address denominatorToken; //quote token contract address
         address uniPool; //address of the uniswap pool ^
-        bool withSeating; // issues NFT
     }
 
     struct configdata {
-        uint64[4] cycleParams; // [cycleFreq, minDistance, budgetSlicer, boughtBack]
+        uint64[4] cycleParams; // [cycleFreq, minDistance, budgetSlicer, -blank 0-]
         uint32 minBagSize; // min bag size
         bool controlledSpeed; // if true, facilitate speed management
     }
@@ -100,15 +99,16 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
 
     ////////////////
 
-    function updateEnvironment(address _poolFactory) public onlyOwner {
-        require(_poolFactory != address(0));
-
-        ///@dev would be a cool nightmare to load interface on the fly
-        ///@dev use an adapter maybe
-        emit RailNetworkChanged(address(uniswapV2), _poolFactory);
+    function updateEnvironment(address _poolFactory, address _vRegistry)
+        public
+        onlyOwner
+    {
+        require(_poolFactory != address(0) && _vRegistry != address(0));
 
         uniswapV2 = IUniswapV2Factory(_poolFactory);
-        yRegistry = IV2Registry(0x50c1a2eA0a861A967D9d0FFE2AE4012c2E053804);
+        yRegistry = IV2Registry(_vRegistry);
+
+        emit RailNetworkChanged(address(uniswapV2), _poolFactory);
     }
 
     ////////////////////////////////
@@ -171,7 +171,6 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
 
     event TrainParamsChanged(
         address indexed _trainAddress,
-        uint64[4] _oldParams,
         uint64[4] _newParams
     );
     //////  Events
@@ -242,21 +241,17 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         zeroNotAllowed(_newparams)
         returns (bool)
     {
-        ///@dev relocate cycleparams[3]
         Train memory train = getTrainByPool[_trainAddress];
-        uint64[4] memory params = train.config.cycleParams;
-        uint64[4] memory _new = [
-            _newparams[0],
-            _newparams[1],
-            _newparams[2],
-            params[3]
-        ];
 
-        train.config.cycleParams = _new;
-        getTrainByPool[_trainAddress] = train;
+        if (train.config.controlledSpeed) {
+            train.config.cycleParams = _newparams;
+            getTrainByPool[_trainAddress] = train;
 
-        emit TrainParamsChanged(_trainAddress, params, _newparams);
-        return true;
+            emit TrainParamsChanged(_trainAddress, _newparams);
+            return true;
+        } else {
+            revert("Immutable Train");
+        }
     }
 
     ///////   Modifiers
@@ -270,7 +265,6 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         address _budgetToken,
         uint64[4] memory _cycleParams,
         uint32 _minBagSize,
-        bool _NFT,
         bool _levers
     ) public zeroNotAllowed(_cycleParams) returns (bool successCreated) {
         address uniPool = isValidPool(_buybackToken, _budgetToken);
@@ -286,8 +280,7 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
             meta: operators({
                 denominatorToken: _budgetToken,
                 buybackToken: _buybackToken,
-                uniPool: uniPool,
-                withSeating: _NFT
+                uniPool: uniPool
             }),
             yieldSharesTotal: 0,
             passengers: 0,
@@ -544,6 +537,7 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         }
     }
 
+    ///before ERC721 transfer
     function _beforeTokenTransfer(
         address from,
         address to,
