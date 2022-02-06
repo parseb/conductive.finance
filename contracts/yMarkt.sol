@@ -6,24 +6,19 @@ pragma solidity 0.8.4;
 
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/access/Ownable.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20.sol";
+import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20Metadata.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/security/ReentrancyGuard.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/token/ERC721/ERC721.sol";
-import "./yInterfaces.sol";
+import "./ISolidly.sol";
 import "./UniswapInterfaces.sol";
-
-//import "./Station.sol";
 
 contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
     /// @dev Uniswap V3 Factory address used to validate token pair and price
 
-    IUniswapV2Factory uniswapV2;
-    IV2Registry yRegistry;
-
     uint256 clicker;
 
     Ticket[] public allTickets;
-    Train[] public allTrains;
-    Ticket[] blanks;
+    //Train[] public allTrains;
 
     mapping(address => Ticket[]) public offBoardingQueue;
 
@@ -61,13 +56,14 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         uint256 at;
         uint256 price;
         uint256 ownedQty;
+        uint256 lastGas;
     }
 
     /// @notice last station data
     mapping(address => stationData) public lastStation;
 
     /// @notice tickets fetchable by perunit price
-    mapping(address => mapping(uint256 => Ticket[])) ticketsFromPrice;
+    mapping(address => mapping(uint256 => Ticket)) ticketFromPrice;
 
     /// @notice gets Ticket of [user] for [train]
     mapping(address => mapping(address => Ticket)) userTrainTicket;
@@ -82,37 +78,38 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
     mapping(address => address) isTrainOwner;
 
     /// @notice stores after what block conductor will be able to withdraw howmuch of buybacked token
-    mapping(address => uint64[2]) allowConductorWithdrawal; //[block, howmuch]
+    mapping(address => uint64) allowConductorWithdrawal; //[block]
 
-    mapping(address => IVault) trainAddressVault;
+    IBaseV1Factory public immutable uniswapV2;
+    IBaseV1Router public immutable uniswapRouter;
 
-    constructor() {
-        uniswapV2 = IUniswapV2Factory(
-            0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f
-        );
-        yRegistry = IV2Registry(0x50c1a2eA0a861A967D9d0FFE2AE4012c2E053804);
-        //yVault = IVault(0x9C13e225AE007731caA49Fd17A41379ab1a489F4);
-        //yRegistry = "0x50c1a2eA0a861A967D9d0FFE2AE4012c2E053804"
+    constructor(address _factory, address _router) {
+        uniswapV2 = IBaseV1Factory(_factory);
+        uniswapRouter = IBaseV1Router(_router);
+
         clicker = 1;
     }
 
     receive() external payable {
-        revert();
+        if (owner() != address(0)) {
+            payable(owner()).call{value: msg.value};
+        } else revert("tomato, potato later");
     }
 
     ////////////////
 
-    function updateEnvironment(address _poolFactory, address _vRegistry)
-        public
-        onlyOwner
-    {
-        require(_poolFactory != address(0) && _vRegistry != address(0));
+    // function updateEnvironment(
+    //     address _poolFactory,
+    //     address _vRegistry,
+    //     address _router
+    // ) public onlyOwner {
+    //     require(_poolFactory != address(0) && _vRegistry != address(0));
 
-        uniswapV2 = IUniswapV2Factory(_poolFactory);
-        yRegistry = IV2Registry(_vRegistry);
-
-        emit RailNetworkChanged(address(uniswapV2), _poolFactory);
-    }
+    //     uniswapV2 = IBaseV1Factory(_poolFactory);
+    //     yRegistry = IV2Registry(_vRegistry);
+    //     uniswapRouter = IUniswapV2Router02(_router);
+    //     emit RailNetworkChanged(address(uniswapV2), _poolFactory);
+    // }
 
     ////////////////////////////////
     ///////  ERRORS
@@ -124,7 +121,7 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
     error IssueOnDeposit(uint256 amount, address token);
     error MinDepositRequired(uint256 required, uint256 provided);
     error NotTrainOwnerError(address _train, address _perp);
-
+    error PriceNotUnique(address _train, uint256 _price);
     //////  Errors
     ////////////////////////////////
 
@@ -179,9 +176,6 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
     //////  Events
     ////////////////////////////////
 
-    //////XXXXX ERC721
-    /////XXXXX  deposit at cycle in pool.
-
     ////////////////////////////////
     ////////  MODIFIERS
 
@@ -189,15 +183,6 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         if (getTrainByPool[_train].meta.uniPool == address(0)) {
             revert TrainNotFound(_train);
         }
-        _;
-    }
-
-    modifier ensureBagSize(uint256 _bagSize, address _train) {
-        if (_bagSize < getTrainByPool[_train].config.minBagSize)
-            revert MinDepositRequired(
-                getTrainByPool[_train].config.minBagSize,
-                _bagSize
-            );
         _;
     }
 
@@ -235,6 +220,15 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         _;
     }
 
+    modifier priceIsUnique(address _train, uint256 _price) {
+        if (ticketFromPrice[_train][_price].bagSize != 0)
+            revert PriceNotUnique(_train, _price);
+        _;
+    }
+
+    ///////// Modifiers
+    //////////////////////////////
+
     function changeTrainParams(
         address _trainAddress,
         uint64[4] memory _newparams
@@ -270,14 +264,15 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         uint32 _minBagSize,
         bool _levers
     ) public zeroNotAllowed(_cycleParams) returns (bool successCreated) {
+        require(_cycleParams[0] > 10); //@dev mincycle hardcoded for jump
+        require(_cycleParams[2] > 1 && _cycleParams[2] < 100);
         address uniPool = isValidPool(_buybackToken, _budgetToken);
-
         if (uniPool == address(0)) {
-            uniPool = uniswapV2.createPair(_buybackToken, _budgetToken);
+            uniPool = uniswapV2.createPair(_buybackToken, _budgetToken, false);
         }
 
         require(uniPool != address(0));
-        trainAddressVault[uniPool] = IVault(tokenHasVault(_buybackToken));
+        //trainAddressVault[uniPool] = IVault(tokenHasVault(_buybackToken));
 
         Train memory _train = Train({
             meta: operators({
@@ -298,7 +293,7 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
 
         getTrainByPool[uniPool] = _train;
         isTrainOwner[uniPool] = msg.sender;
-        allTrains.push(_train);
+        //allTrains.push(_train);
         emit TrainCreated(uniPool, _buybackToken);
         successCreated = true;
     }
@@ -312,7 +307,6 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         public
         payable
         ensureTrain(_trainAddress)
-        ensureBagSize(_bagSize, _trainAddress)
         onlyUnticketed(_trainAddress)
         nonReentrant
         returns (bool success)
@@ -326,21 +320,31 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
             revert ZeroValuesNotAllowed();
         }
         require(!isInStation(_trainAddress), "please wait");
+
+        if (ticketFromPrice[_trainAddress][_perUnit].bagSize != 0)
+            revert PriceNotUnique(_trainAddress, _perUnit);
+
         Train memory train = getTrainByPool[_trainAddress];
 
-        IERC20 token = IERC20(train.meta.buybackToken);
-        bool transfer = token.transferFrom(msg.sender, address(this), _bagSize);
-        if (!transfer) revert IssueOnDeposit(_bagSize, address(token));
+        if (_bagSize < train.config.minBagSize)
+            revert MinDepositRequired(train.config.minBagSize, _bagSize);
 
-        uint64 _departure = uint64(block.number);
-        uint64 _destination = (_stations * train.config.cycleParams[0]) +
-            _departure;
+        bool transfer = IERC20(train.meta.buybackToken).transferFrom(
+            msg.sender,
+            address(this),
+            _bagSize
+        );
+        if (!transfer)
+            revert IssueOnDeposit(_bagSize, address(train.meta.buybackToken));
 
         Ticket memory ticket = Ticket({
-            destination: _destination,
-            departure: _departure,
+            destination: (_stations * train.config.cycleParams[0]) +
+                uint64(block.number),
+            departure: uint64(block.number),
             bagSize: _bagSize,
-            perUnit: _perUnit,
+            perUnit: _perUnit /
+                ((IERC20Metadata(train.meta.denominatorToken).decimals() - 2) **
+                    10),
             trainAddress: _trainAddress,
             nftid: clicker
         });
@@ -348,17 +352,22 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         _safeMint(msg.sender, clicker);
 
         userTrainTicket[msg.sender][_trainAddress] = ticket;
+        ticketFromPrice[_trainAddress][ticket.perUnit] = ticket;
         ticketByNftId[clicker] = [msg.sender, _trainAddress];
         allTickets.push(ticket);
+
         incrementPassengers(_trainAddress);
         incrementBag(_trainAddress, _bagSize);
-        incrementShares(_trainAddress, (_destination - _departure), _bagSize);
+        incrementShares(
+            _trainAddress,
+            (ticket.destination - uint64(block.number)),
+            _bagSize
+        );
 
-        ticketsFromPrice[_trainAddress][_perUnit].push(ticket);
         clicker++;
 
         success = true;
-        emit TicketCreated(msg.sender, _trainAddress, _perUnit);
+        emit TicketCreated(msg.sender, _trainAddress, ticket.perUnit);
     }
 
     function burnTicket(address _train)
@@ -370,83 +379,119 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         require(!isInStation(_train), "please wait");
         Ticket memory ticket = userTrainTicket[msg.sender][_train];
         require(ticket.bagSize > 0, "Already Burned");
-
+        require(
+            ticket.departure > block.number + 10,
+            "doors are still closing"
+        );
         Train memory train = getTrainByPool[ticket.trainAddress];
 
-        success = tokenOut(train.meta.buybackToken, ticket.bagSize, _train);
+        success = tokenOut(ticket.bagSize, train);
         if (success) {
             _burn(ticket.nftid);
             emit JumpedOut(msg.sender, _train, ticket.nftid);
         }
     }
 
-    ///@dev gas !!!
-    function trainStation(address _trainAddress)
-        public
-        nonReentrant
-        returns (bool success)
-    {
+    ///@dev gas war - feature or bug?
+    function trainStation(address _trainAddress) public nonReentrant {
+        uint256 g1 = gasleft();
         require(lastStation[_trainAddress].at != block.number, "Departing");
         require(isInStation(_trainAddress), "Train moving. (Chu, Chu)");
 
-        Train memory train = getTrainByPool[_trainAddress];
-        IERC20 token = IERC20(train.meta.buybackToken);
-
-        if (allowConductorWithdrawal[_trainAddress][1] > 1) {
+        //////////////////////////////////////////////////////////////////////////
+        /// conductor withdrawal
+        if (allowConductorWithdrawal[_trainAddress] >= block.number) {
             withdrawBuybackToken(_trainAddress);
         }
-        /// if vault
-        IVault vault = trainAddressVault[_trainAddress];
-        IUniswapV2Pair pair = IUniswapV2Pair(_trainAddress);
+        ////////////////////////////////////////////////////////////////////
+        /// orderly disemark
+
+        Train memory train = getTrainByPool[_trainAddress];
+
         uint256 vYield;
         uint256 pYield;
-        /// @dev inCustoday weight. weird vibes.
-        bool isVault = address(vault) != address(0);
-        if (isVault) {
-            vYield = (vault.maxAvailableShares() / train.yieldSharesTotal);
-        } else {
-            pYield =
-                (pair.balanceOf(address(this)) - train.inCustody) /
-                train.yieldSharesTotal;
-        }
+        uint256 _price = IBaseV1Pair(train.meta.uniPool).current(
+            train.meta.buybackToken,
+            (10**IERC20Metadata(train.meta.buybackToken).decimals())
+        );
+
+        IBaseV1Pair(_trainAddress).burn(address(this));
+        pYield =
+            (IERC20(train.meta.buybackToken).balanceOf(address(this)) -
+                train.inCustody) /
+            train.yieldSharesTotal;
+
+        /// offboarding queue
+        offBoardingPrep(_trainAddress, _price);
+
         for (uint256 i = 0; i < offBoardingQueue[_trainAddress].length; i++) {
             /// @dev fuzzy
             Ticket memory t = offBoardingQueue[_trainAddress][i];
-            uint256 _shares = t.bagSize * (t.destination - t.departure);
+            bool vested = t.destination < block.number;
+            uint256 _shares;
+            address toWho = ticketByNftId[t.nftid][0];
+            if (vested) _shares = t.bagSize * (t.destination - t.departure);
+            if (!vested) _shares = t.bagSize * (block.number - t.departure);
 
-            if (isVault)
-                vault.withdraw(
-                    (vYield * _shares + t.bagSize),
-                    ticketByNftId[t.nftid][0]
-                );
-            else
-                pair.transfer(
-                    ticketByNftId[t.nftid][0],
+            if (vested) {
+                IERC20(train.meta.buybackToken).transfer(
+                    toWho,
                     (pYield * _shares + t.bagSize)
                 );
-
+            } else {
+                IERC20(train.meta.denominatorToken).transfer(
+                    toWho,
+                    ((pYield * _shares + t.bagSize) * t.perUnit)
+                );
+            }
+            delete offBoardingQueue[_trainAddress][i];
             _burn(t.nftid);
         }
 
-        offBoardingQueue[_trainAddress] = blanks;
+        //////  orderly disemark
+        ////////////////////////////////////////////////////////////////////
+
+        uint256 card = train.budget;
+        uint64 percentage = train.config.cycleParams[2];
+        if (train.budget > 0)
+            train.budget = train.budget - ((percentage * train.budget) / 100);
+
+        card = card - train.budget;
+        card = card / _price;
+        lastStation[_trainAddress].ownedQty += card;
+        card =
+            IERC20(train.meta.buybackToken).balanceOf(address(this)) -
+            lastStation[_trainAddress].ownedQty;
+
+        train.inCustody = card;
+
+        /// add liquidity. buyback using slice of budget
+        IERC20(train.meta.buybackToken).approve(
+            address(uniswapRouter),
+            type(uint128).max - 1
+        );
+        IERC20(train.meta.denominatorToken).approve(
+            address(uniswapRouter),
+            type(uint128).max - 1
+        );
+        uniswapRouter.addLiquidity(
+            address(IERC20(train.meta.buybackToken)),
+            address(IERC20(train.meta.denominatorToken)),
+            false,
+            card,
+            train.budget,
+            1,
+            1,
+            address(this),
+            block.timestamp - 2
+        );
 
         //////////////////////////
 
-        // - buyback - yield
-
-        // - onboard
-
-        bool bagsToOnboard = token.balanceOf(address(this)) > 0;
-        if (bagsToOnboard) {
-            return true;
-            /// deposit new token, non-buyback token in vault
-        }
-
-        //emit TrainInStation(_trainAddress, stationsBehind);
+        emit TrainInStation(_trainAddress, block.number);
         ///@dev review OoO
-        lastStation[_trainAddress].at = block.number;
 
-        //stationsBehind++;
+        lastStation[_trainAddress].lastGas = (g1 - (g1 - gasleft()));
     }
 
     function requestOffBoarding(address _trainAddress)
@@ -471,7 +516,7 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         uint64 _quantity,
         uint64 _wen,
         address _trainAddress
-    ) public onlyTrainOnwer(_trainAddress) returns (bool success) {
+    ) public onlyTrainOnwer(_trainAddress) {
         require(!isInStation(_trainAddress), "please wait");
 
         Train memory train = getTrainByPool[_trainAddress];
@@ -480,10 +525,9 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         require(_quantity > 1, "swamp of nothingness");
         // require(lastStation[_trainAddress].ownedQty > _quantity, "never, cool");
         ///@notice case for 0 erc20 transfer .any?
-        allowConductorWithdrawal[_trainAddress] = [
-            train.config.cycleParams[0] * _wen + uint64(block.number),
-            _quantity
-        ];
+        allowConductorWithdrawal[_trainAddress] =
+            train.config.cycleParams[0] *
+            _wen;
 
         emit TrainConductorBeingWeird(_quantity, _trainAddress, msg.sender);
     }
@@ -504,7 +548,7 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         address to,
         uint256 tokenId
     ) internal override {
-        if (from != address(0)) {
+        if (from != address(0) || to == address(0)) {
             Ticket memory emptyticket;
             Ticket memory T = getTicketById(tokenId);
             uint256 toBurn = T.bagSize * (T.destination - T.departure);
@@ -522,28 +566,30 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
     /////////////////////////////////
     ////////  PRIVATE FUNCTIONS
 
-    function tokenOut(
-        address _token,
-        uint256 _amount,
-        address _train
-    ) private returns (bool success) {
-        IERC20 token = IERC20(_token);
-        IVault vault = trainAddressVault[_train];
+    function tokenOut(uint256 _amount, Train memory train)
+        private
+        returns (bool success)
+    {
+        IERC20 token = IERC20(train.meta.buybackToken);
         uint256 prev = token.balanceOf(address(this));
-        if (prev >= _amount) {
-            success = token.transfer(msg.sender, _amount);
-            require(
-                token.balanceOf(address(this)) >= (prev - _amount),
-                "token transfer failed"
-            );
-        } else if (address(vault) != address(0)) {
-            ///@dev fuzzy
-            uint256 sharesToConvert = (_amount / (vault.pricePerShare())) + 1;
-            vault.withdraw(sharesToConvert);
-            success = token.transfer(msg.sender, _amount);
-        }
+        if (prev >= _amount) success = token.transfer(msg.sender, _amount);
+
         if (!success) {
-            success = IUniswapV2Pair(_train).transfer(msg.sender, _amount);
+            IBaseV1Pair(train.meta.uniPool).burn(address(this));
+            success = token.transfer(msg.sender, _amount);
+            IBaseV1Router(train.meta.uniPool).addLiquidity(
+                address(token),
+                train.meta.buybackToken,
+                false,
+                token.balanceOf(address(this)) -
+                    lastStation[train.meta.uniPool].ownedQty,
+                IERC20(train.meta.denominatorToken).balanceOf(address(this)) -
+                    train.budget,
+                0,
+                0,
+                address(this),
+                block.timestamp
+            );
         }
     }
 
@@ -552,22 +598,14 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         returns (bool success)
     {
         IERC20 token = IERC20(getTrainByPool[_trainAddress].meta.buybackToken);
-        uint256 quantity = allowConductorWithdrawal[_trainAddress][1];
-        if (
-            isRugpullNow(_trainAddress) &&
-            lastStation[_trainAddress].ownedQty > quantity
-        ) {
-            allowConductorWithdrawal[_trainAddress] = [0, 0];
-            success = token.transfer(isTrainOwner[_trainAddress], quantity);
+        uint256 q = lastStation[_trainAddress].ownedQty;
+        if (isRugpullNow(_trainAddress) && q > 0) {
+            success = token.transfer(isTrainOwner[_trainAddress], q);
         }
         if (success) {
-            lastStation[_trainAddress].ownedQty -= quantity;
-
-            emit TrainConductorWithdrawal(
-                address(token),
-                _trainAddress,
-                quantity
-            );
+            allowConductorWithdrawal[_trainAddress] = 0;
+            lastStation[_trainAddress].ownedQty = 0;
+            emit TrainConductorWithdrawal(address(token), _trainAddress, q);
         }
     }
 
@@ -601,6 +639,35 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
             _bagSize;
     }
 
+    function offBoardingPrep(address _trainAddress, uint256 _price) private {
+        uint256 lastAtPrice = lastStation[_trainAddress].price;
+
+        uint256 priceNow = _price /
+            ((IERC20Metadata(
+                getTrainByPool[_trainAddress].meta.denominatorToken
+            ).decimals() - 2)**10);
+
+        uint256 x = uint256(priceNow) -
+            (uint256(int256(priceNow) - int256(lastAtPrice)));
+        if (priceNow > lastAtPrice) x = lastAtPrice;
+        if (priceNow < lastAtPrice) x = priceNow - (lastAtPrice - priceNow);
+        ///@dev better x for second case range
+        uint256[] memory burnable;
+        for (uint256 i = x; i < priceNow; i++) {
+            if (ticketFromPrice[_trainAddress][i].bagSize > 0)
+                burnable[i - x] = i;
+        }
+
+        for (uint256 i = 0; i < burnable.length; i++) {
+            offBoardingQueue[_trainAddress].push(
+                ticketFromPrice[_trainAddress][burnable[i]]
+            );
+        }
+
+        lastStation[_trainAddress].at = block.number;
+        lastStation[_trainAddress].price = priceNow;
+    }
+
     //////// Private Functions
     /////////////////////////////////
 
@@ -614,7 +681,7 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         view
         returns (address poolAddress)
     {
-        poolAddress = uniswapV2.getPair(_bToken, _denominator);
+        poolAddress = uniswapV2.getPair(_bToken, _denominator, false);
     }
 
     function getTicket(address _user, address _train)
@@ -623,14 +690,6 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         returns (Ticket memory ticket)
     {
         ticket = userTrainTicket[_user][_train];
-    }
-
-    function getTicketsByPrice(address _train, uint64 _perPrice)
-        public
-        view
-        returns (Ticket[] memory)
-    {
-        return ticketsFromPrice[_train][_perPrice];
     }
 
     function getTrain(address _trainAddress)
@@ -652,7 +711,7 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
                 lastStation[_trainAddress].at ==
             block.number
         ) inStation = true;
-        /// @dev strinct equality. gas wars
+        /// @dev strict equality
     }
 
     function getTicketById(uint256 _id)
@@ -665,7 +724,7 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
     }
 
     function isRugpullNow(address _trainAddress) public view returns (bool) {
-        return allowConductorWithdrawal[_trainAddress][0] < block.number;
+        return allowConductorWithdrawal[_trainAddress] < block.number;
     }
 
     function stationsLeft(uint256 _nftID) public view returns (uint64) {
@@ -678,19 +737,19 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
             );
     }
 
-    function tokenHasVault(address _buybackERC)
-        public
-        view
-        returns (address vault)
-    {
-        try yRegistry.latestVault(_buybackERC) returns (address response) {
-            if (response != address(0)) {
-                vault = response;
-            }
-        } catch {
-            vault = address(0);
-        }
-    }
+    // function tokenHasVault(address _buybackERC)
+    //     public
+    //     view
+    //     returns (address vault)
+    // {
+    //     try yRegistry.latestVault(_buybackERC) returns (address response) {
+    //         if (response != address(0)) {
+    //             vault = response;
+    //         }
+    //     } catch {
+    //         vault = address(0);
+    //     }
+    // }
 
     //////// View Functions
     //////////////////////////////////
