@@ -307,6 +307,9 @@ contract Conductive is
 
         getTrainByPool[uniPool] = _train;
         isTrainOwner[uniPool] = msg.sender;
+        lastStation[uniPool].at = block.number;
+        //lastStation[uniPool].price = getTokenPrice(uniPool);
+
         //allTrains.push(_train);
         emit TrainCreated(uniPool, _buybackToken);
         successCreated = true;
@@ -342,7 +345,7 @@ contract Conductive is
         uint256 minPrice = 10 **
             (IERC20Metadata(train.meta.denominatorToken).decimals() -
                 train.config.cycleParams[3]);
-        require(minPrice < _perUnit, "too low");
+        require(minPrice <= _perUnit, "too low");
 
         if (_bagSize < train.config.minBagSize)
             revert MinDepositRequired(train.config.minBagSize, _bagSize);
@@ -399,7 +402,7 @@ contract Conductive is
         Ticket memory ticket = userTrainTicket[msg.sender][_train];
         require(ticket.bagSize > 0, "Already Burned");
         require(
-            ticket.departure > block.number + 10,
+            ticket.departure + 10 < block.number,
             "doors are still closing"
         );
         Train memory train = getTrainByPool[ticket.trainAddress];
@@ -412,7 +415,11 @@ contract Conductive is
     }
 
     ///@dev gas war - feature or bug?
-    function trainStation(address _trainAddress) public nonReentrant {
+    function trainStation(address _trainAddress)
+        public
+        nonReentrant
+        returns (bool)
+    {
         uint256 g1 = gasleft();
         require(lastStation[_trainAddress].at != block.number, "Departing");
         require(isInStation(_trainAddress), "Train moving. (Chu, Chu)");
@@ -515,6 +522,8 @@ contract Conductive is
         ///@dev review OoO
 
         lastStation[_trainAddress].lastGas = (g1 - (g1 - gasleft()));
+
+        return true;
     }
 
     function requestOffBoarding(address _trainAddress)
@@ -688,6 +697,20 @@ contract Conductive is
         lastStation[_trainAddress].price = priceNow;
     }
 
+    function getTokenPrice(address _trainAddress)
+        public
+        view
+        returns (uint256)
+    {
+        Train memory train = getTrainByPool[_trainAddress];
+        uint8 decimals = IERC20Metadata(train.meta.buybackToken).decimals();
+        uint256 price = IBaseV1Pair(train.meta.uniPool).current(
+            train.meta.buybackToken,
+            (10**decimals)
+        );
+        return price / (10**(decimals - uint8(train.config.cycleParams[3])));
+    }
+
     //////// Private Functions
     /////////////////////////////////
 
@@ -745,6 +768,16 @@ contract Conductive is
                 (ticket.destination - block.number) /
                     (getTrainByPool[ticket.trainAddress].config.cycleParams[0])
             );
+    }
+
+    function nextStationAt(address _trainAddress)
+        public
+        view
+        returns (uint256)
+    {
+        return
+            getTrainByPool[_trainAddress].config.cycleParams[0] +
+            lastStation[_trainAddress].at;
     }
 
     // function tokenHasVault(address _buybackERC)

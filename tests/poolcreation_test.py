@@ -18,7 +18,6 @@ from brownie_tokens import MintableForkToken
 
 def test_train_create_generates_valid_pool_registry(Conductive, solidSwap, YFI, wFTM):
     p0 = solidSwap.getPair(YFI.address, wFTM.address, False, {"from": accounts[0]})
-    assert p0 == ZERO_ADDRESS
     if p0 == ZERO_ADDRESS:
         assert Conductive.createTrain(
             YFI.address,
@@ -84,10 +83,10 @@ def test_create_ticket(Conductive, wFTM, YFI, YFIwFTM, YFIrich):
     chain.mine(10)
     train = Conductive.getTrain(YFIwFTM, {"from": accounts[0]})
     assert Conductive.createTicket(
-        1121,  # stations / cycles until vested
-        200 * (10 ** 18),  # per unit / compensate at price
-        YFIwFTM,  # pool / train address
-        2 * (10 ** 18),  #  nr of tokens / bag size
+        100,
+        200 * (10 ** 18),
+        YFIwFTM,
+        2 * (10 ** 18),
         {"from": accounts[1]},
     )
 
@@ -102,5 +101,51 @@ def test_create_ticket(Conductive, wFTM, YFI, YFIwFTM, YFIrich):
     assert chain.height == getTicket[1] + 1
 
 
-def test_checks_seating_functionality(Conductive):
-    pytest.skip("Not implemented")
+def test_burns_ticket_strightforward(Conductive, YFIwFTM, YFI):
+    ticket = Conductive.getTicket(accounts[1], YFIwFTM)
+    chain.mine(11)  # fails on less than 10
+    prev_balance = YFI.balanceOf(accounts[1])
+    prev_contract_balance = YFI.balanceOf(Conductive.address)
+
+    assert Conductive.burnTicket(YFIwFTM, {"from": accounts[1]})
+
+    after_balance = YFI.balanceOf(accounts[1])
+    after_contract_balance = YFI.balanceOf(Conductive.address)
+
+    assert after_balance == prev_balance + ticket[2]
+    assert after_contract_balance >= prev_contract_balance - ticket[2]
+
+    with reverts():
+        Conductive.ownerOf(ticket[-1])
+    burned = Conductive.getTicket(accounts[1], YFIwFTM)
+    assert burned[0] == burned[1] == burned[2] == burned[3] == burned[5] == 0
+
+
+def test_burns_ticket_after_station_cycle(Conductive, YFIwFTM, YFI, wFTM):
+
+    assert Conductive.createTicket(
+        100,
+        200 * (10 ** 18),
+        YFIwFTM,
+        2 * (10 ** 18),
+        {"from": accounts[1]},
+    )
+
+    train = Conductive.getTrain(YFIwFTM, {"from": accounts[0]})
+    nextStationAt = Conductive.nextStationAt(YFIwFTM)
+
+    chain.mine(nextStationAt - chain.height - 1)
+
+    assert Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
+
+    chain.mine(1)
+
+    assert Conductive.burnTicket(YFIwFTM, {"from": accounts[1]})
+
+
+def test_burns_ticket_with_vesting(Conductive, YFIwFTM, YFI):
+    pytest.skip("TODO")
+
+
+def test_burns_ticket_after_offboard_request(Conductive, YFIwFTM, YFI):
+    pytest.skip("TODO")
