@@ -12,7 +12,11 @@ import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/token/ERC721/ERC721.
 import "./ISolidly.sol";
 import "./UniswapInterfaces.sol";
 
-contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
+contract Conductive is
+    Ownable,
+    ReentrancyGuard,
+    ERC721("conductive.finance", "Train")
+{
     /// @dev Uniswap V3 Factory address used to validate token pair and price
 
     uint256 clicker;
@@ -29,8 +33,8 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
     }
 
     struct configdata {
-        uint64[4] cycleParams; // [cycleFreq, minDistance, budgetSlicer, -blank 0-]
-        uint32 minBagSize; // min bag size
+        uint64[4] cycleParams; // [cycleFreq, minDistance, budgetSlicer, perDecimalDepth]
+        uint256 minBagSize; // min bag size
         bool controlledSpeed; // if true, facilitate speed management
     }
 
@@ -80,12 +84,12 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
     /// @notice stores after what block conductor will be able to withdraw howmuch of buybacked token
     mapping(address => uint64) allowConductorWithdrawal; //[block]
 
-    IBaseV1Factory public immutable uniswapV2;
-    IBaseV1Router public immutable uniswapRouter;
+    IBaseV1Factory public immutable baseFactory;
+    IBaseV1Router public immutable solidRouter;
 
     constructor(address _factory, address _router) {
-        uniswapV2 = IBaseV1Factory(_factory);
-        uniswapRouter = IBaseV1Router(_router);
+        baseFactory = IBaseV1Factory(_factory);
+        solidRouter = IBaseV1Router(_router);
 
         clicker = 1;
     }
@@ -105,10 +109,10 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
     // ) public onlyOwner {
     //     require(_poolFactory != address(0) && _vRegistry != address(0));
 
-    //     uniswapV2 = IBaseV1Factory(_poolFactory);
+    //     baseFactory = IBaseV1Factory(_poolFactory);
     //     yRegistry = IV2Registry(_vRegistry);
-    //     uniswapRouter = IUniswapV2Router02(_router);
-    //     emit RailNetworkChanged(address(uniswapV2), _poolFactory);
+    //     solidRouter = IUniswapV2Router02(_router);
+    //     emit RailNetworkChanged(address(baseFactory), _poolFactory);
     // }
 
     ////////////////////////////////
@@ -261,18 +265,28 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         address _buybackToken,
         address _budgetToken,
         uint64[4] memory _cycleParams,
-        uint32 _minBagSize,
+        uint256 _minBagSize,
         bool _levers
     ) public zeroNotAllowed(_cycleParams) returns (bool successCreated) {
         require(_cycleParams[0] > 10); //@dev mincycle hardcoded for jump
         require(_cycleParams[2] > 1 && _cycleParams[2] < 100);
-        address uniPool = isValidPool(_buybackToken, _budgetToken);
+
+        address uniPool = baseFactory.getPair(
+            _buybackToken,
+            _budgetToken,
+            false
+        );
         if (uniPool == address(0)) {
-            uniPool = uniswapV2.createPair(_buybackToken, _budgetToken, false);
+            uniPool = baseFactory.createPair(
+                _buybackToken,
+                _budgetToken,
+                false
+            );
         }
 
         require(uniPool != address(0));
         //trainAddressVault[uniPool] = IVault(tokenHasVault(_buybackToken));
+        require(getTrainByPool[uniPool].meta.uniPool == address(0), "exists");
 
         Train memory _train = Train({
             meta: operators({
@@ -311,6 +325,7 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         nonReentrant
         returns (bool success)
     {
+        require(!isInStation(_trainAddress), "wait");
         if (
             _stations == 0 ||
             _bagSize == 0 ||
@@ -319,12 +334,15 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         ) {
             revert ZeroValuesNotAllowed();
         }
-        require(!isInStation(_trainAddress), "please wait");
 
         if (ticketFromPrice[_trainAddress][_perUnit].bagSize != 0)
             revert PriceNotUnique(_trainAddress, _perUnit);
 
         Train memory train = getTrainByPool[_trainAddress];
+        uint256 minPrice = 10 **
+            (IERC20Metadata(train.meta.denominatorToken).decimals() -
+                train.config.cycleParams[3]);
+        require(minPrice < _perUnit, "too low");
 
         if (_bagSize < train.config.minBagSize)
             revert MinDepositRequired(train.config.minBagSize, _bagSize);
@@ -334,6 +352,7 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
             address(this),
             _bagSize
         );
+
         if (!transfer)
             revert IssueOnDeposit(_bagSize, address(train.meta.buybackToken));
 
@@ -342,9 +361,7 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
                 uint64(block.number),
             departure: uint64(block.number),
             bagSize: _bagSize,
-            perUnit: _perUnit /
-                ((IERC20Metadata(train.meta.denominatorToken).decimals() - 2) **
-                    10),
+            perUnit: _perUnit,
             trainAddress: _trainAddress,
             nftid: clicker
         });
@@ -352,7 +369,9 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         _safeMint(msg.sender, clicker);
 
         userTrainTicket[msg.sender][_trainAddress] = ticket;
-        ticketFromPrice[_trainAddress][ticket.perUnit] = ticket;
+        ticketFromPrice[_trainAddress][
+            ticket.perUnit / (10**train.config.cycleParams[3])
+        ] = ticket;
         ticketByNftId[clicker] = [msg.sender, _trainAddress];
         allTickets.push(ticket);
 
@@ -407,12 +426,13 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
         /// orderly disemark
 
         Train memory train = getTrainByPool[_trainAddress];
+        uint8 denomDecimals = IERC20Metadata(train.meta.buybackToken)
+            .decimals();
 
-        uint256 vYield;
         uint256 pYield;
         uint256 _price = IBaseV1Pair(train.meta.uniPool).current(
             train.meta.buybackToken,
-            (10**IERC20Metadata(train.meta.buybackToken).decimals())
+            (10**denomDecimals)
         );
 
         IBaseV1Pair(_trainAddress).burn(address(this));
@@ -422,7 +442,10 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
             train.yieldSharesTotal;
 
         /// offboarding queue
-        offBoardingPrep(_trainAddress, _price);
+        offBoardingPrep(
+            _trainAddress,
+            _price / (10**(denomDecimals - train.config.cycleParams[3]))
+        );
 
         for (uint256 i = 0; i < offBoardingQueue[_trainAddress].length; i++) {
             /// @dev fuzzy
@@ -467,14 +490,14 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
 
         /// add liquidity. buyback using slice of budget
         IERC20(train.meta.buybackToken).approve(
-            address(uniswapRouter),
+            address(solidRouter),
             type(uint128).max - 1
         );
         IERC20(train.meta.denominatorToken).approve(
-            address(uniswapRouter),
+            address(solidRouter),
             type(uint128).max - 1
         );
-        uniswapRouter.addLiquidity(
+        solidRouter.addLiquidity(
             address(IERC20(train.meta.buybackToken)),
             address(IERC20(train.meta.denominatorToken)),
             false,
@@ -642,10 +665,7 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
     function offBoardingPrep(address _trainAddress, uint256 _price) private {
         uint256 lastAtPrice = lastStation[_trainAddress].price;
 
-        uint256 priceNow = _price /
-            ((IERC20Metadata(
-                getTrainByPool[_trainAddress].meta.denominatorToken
-            ).decimals() - 2)**10);
+        uint256 priceNow = _price; ///@dev
 
         uint256 x = uint256(priceNow) -
             (uint256(int256(priceNow) - int256(lastAtPrice)));
@@ -673,16 +693,6 @@ contract Ymarkt is Ownable, ReentrancyGuard, ERC721("Train", "Train") {
 
     /////////////////////////////////
     ////////  VIEW FUNCTIONS
-
-    /// @param _bToken address of the base token
-    /// @param _denominator address of the quote token
-    function isValidPool(address _bToken, address _denominator)
-        public
-        view
-        returns (address poolAddress)
-    {
-        poolAddress = uniswapV2.getPair(_bToken, _denominator, false);
-    }
 
     function getTicket(address _user, address _train)
         public

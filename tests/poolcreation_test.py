@@ -1,23 +1,106 @@
 from distutils.log import error
+from math import fabs
 from sre_constants import ASSERT_NOT
 import pytest
-from brownie import accounts, chain, ZERO_ADDRESS, Contract, convert, rpc
-
+from brownie import (
+    accounts,
+    chain,
+    ZERO_ADDRESS,
+    Contract,
+    convert,
+    rpc,
+    Conductive,
+    reverts,
+)
 
 from brownie_tokens import MintableForkToken
 
 
-def test_trainid_is_validatedbyby_solidSwap_registry(yMarkt, solidSwap):
-    pytest.skip("Not implemented")
+def test_train_create_generates_valid_pool_registry(Conductive, solidSwap, YFI, wFTM):
+    p0 = solidSwap.getPair(YFI.address, wFTM.address, False, {"from": accounts[0]})
+    assert p0 == ZERO_ADDRESS
+    if p0 == ZERO_ADDRESS:
+        assert Conductive.createTrain(
+            YFI.address,
+            wFTM.address,
+            [100, 5, 50, 1],
+            1 * (10 ** 18),
+            False,
+            {"from": accounts[0]},
+        )  # returns True
+    p1 = solidSwap.getPair(YFI.address, wFTM.address, False, {"from": accounts[0]})
+    assert p1 != p0
 
 
-def test_becomes_valid_pool(yMarkt, solidSwap):
-    pytest.skip("Not implemented")
+def test_creating_train_with_existing_pool_fails(
+    Conductive, solidSwap, YFIwFTM, YFI, wFTM
+):
+    pair = solidSwap.getPair(YFI.address, wFTM.address, False, {"from": accounts[0]})
+    assert pair != ZERO_ADDRESS
+    assert Conductive.getTrain(pair, {"from": accounts[0]})[0][2] != ZERO_ADDRESS
+
+    # "Overriding train not allowed"
+    with reverts("exists"):
+        Conductive.createTrain(
+            YFI.address,
+            wFTM.address,
+            [101, 51, 51, 2],
+            11,
+            False,
+            {"from": accounts[0]},
+        )
 
 
-def test_create_train_returns_true(yMarkt, addrzero, solidSwap):
-    pytest.skip("Not implemented")
+def test_create_train_with_0_values_in_configlist_fails(Conductive):
+    # "Zero values not allowed in config list"
+    with reverts():
+        Conductive.createTrain(
+            accounts[5].address,
+            accounts[6].address,
+            [101, 0, 51, 2],
+            11 * (10 ** 18),
+            False,
+            {"from": accounts[0]},
+        )
 
 
-def test_checks_seating_functionality(yMarkt):
+def test_fails_on_per_price_too_low(Conductive, YFIwFTM, YFI, YFIrich):
+    YFI.transfer(accounts[1], 5000000000000000000, {"from": YFIrich})
+    YFI.approve(Conductive.address, 5000000000000000000, {"from": accounts[1]})
+    chain.mine(10)
+    with reverts():
+        Conductive.createTicket(
+            1121,  # stations / cycles until vested
+            2334,  # per unit / compensate at price
+            YFIwFTM,  # pool / train address
+            11,  #  nr of tokens / bag size
+            {"from": accounts[1]},
+        )
+
+
+def test_create_ticket(Conductive, wFTM, YFI, YFIwFTM, YFIrich):
+    YFI.transfer(accounts[1], 2 * (10 ** 18), {"from": YFIrich})
+    YFI.approve(Conductive.address, 999 * (10 ** 18), {"from": accounts[1]})
+    chain.mine(10)
+    train = Conductive.getTrain(YFIwFTM, {"from": accounts[0]})
+    assert Conductive.createTicket(
+        1121,  # stations / cycles until vested
+        200 * (10 ** 18),  # per unit / compensate at price
+        YFIwFTM,  # pool / train address
+        2 * (10 ** 18),  #  nr of tokens / bag size
+        {"from": accounts[1]},
+    )
+
+    chain.mine(1)
+
+    getTicket = Conductive.getTicket(accounts[1], YFIwFTM)
+    getTicketById = Conductive.getTicketById(getTicket[-1])
+
+    assert getTicket == getTicketById
+    assert Conductive.ownerOf(getTicket[-1]) == accounts[1]
+    assert getTicket[-2] == YFIwFTM
+    assert chain.height == getTicket[1] + 1
+
+
+def test_checks_seating_functionality(Conductive):
     pytest.skip("Not implemented")
