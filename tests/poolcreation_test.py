@@ -147,7 +147,6 @@ def test_burns_ticket_after_station_cycle(
         Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
 
     chain.mine(nextStationAt - chain.height - 1)
-    print("++++++fnadjbhgnjsdfbgjdfbgjbgjsd============")
     assert Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
 
     chain.mine(1)
