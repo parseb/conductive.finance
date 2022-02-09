@@ -1,6 +1,7 @@
 from distutils.log import error
 from math import fabs
 from sre_constants import ASSERT_NOT
+from uuid import RESERVED_MICROSOFT
 import pytest
 from brownie import (
     accounts,
@@ -14,6 +15,7 @@ from brownie import (
 )
 
 from brownie_tokens import MintableForkToken
+from tests.conftest import YFIrich, wFTMrich
 
 
 def test_train_create_generates_valid_pool_registry(Conductive, solidSwap, YFI, wFTM):
@@ -21,7 +23,6 @@ def test_train_create_generates_valid_pool_registry(Conductive, solidSwap, YFI, 
     if p0 == ZERO_ADDRESS:
         assert Conductive.createTrain(
             YFI.address,
-            wFTM.address,
             [100, 5, 50, 1],
             1 * (10 ** 18),
             False,
@@ -36,13 +37,12 @@ def test_creating_train_with_existing_pool_fails(
 ):
     pair = solidSwap.getPair(YFI.address, wFTM.address, False, {"from": accounts[0]})
     assert pair != ZERO_ADDRESS
-    assert Conductive.getTrain(pair, {"from": accounts[0]})[0][2] != ZERO_ADDRESS
+    assert Conductive.getTrain(pair, {"from": accounts[0]})[0][1] != ZERO_ADDRESS
 
     # "Overriding train not allowed"
     with reverts("exists"):
         Conductive.createTrain(
             YFI.address,
-            wFTM.address,
             [101, 51, 51, 2],
             11,
             False,
@@ -55,7 +55,6 @@ def test_create_train_with_0_values_in_configlist_fails(Conductive):
     with reverts():
         Conductive.createTrain(
             accounts[5].address,
-            accounts[6].address,
             [101, 0, 51, 2],
             11 * (10 ** 18),
             False,
@@ -121,8 +120,9 @@ def test_burns_ticket_strightforward(Conductive, YFIwFTM, YFI):
     assert burned[0] == burned[1] == burned[2] == burned[3] == burned[5] == 0
 
 
-def test_burns_ticket_after_station_cycle(Conductive, YFIwFTM, YFI, wFTM):
-
+def test_burns_ticket_after_station_cycle(
+    Conductive, YFIwFTM, YFI, wFTM, solidRegistry, solidSwap, wFTMrich, YFIrich
+):
     assert Conductive.createTicket(
         100,
         200 * (10 ** 18),
@@ -131,14 +131,40 @@ def test_burns_ticket_after_station_cycle(Conductive, YFIwFTM, YFI, wFTM):
         {"from": accounts[1]},
     )
 
+    reserves = solidRegistry.getReserves(
+        YFI.address, wFTM.address, False, {"from": accounts[9]}
+    )
+    assert reserves[0] == reserves[1] == 0
+
+    YFI.transfer(Conductive.address, 2 * (10 ** 18), {"from": YFIrich})
+    wFTM.transfer(Conductive.address, 2 * (10 ** 18), {"from": wFTMrich})
+    YFI.transfer(accounts[1], 2 * (10 ** 18), {"from": YFIrich})
+    wFTM.transfer(accounts[1], 2 * (10 ** 18), {"from": wFTMrich})
     train = Conductive.getTrain(YFIwFTM, {"from": accounts[0]})
     nextStationAt = Conductive.nextStationAt(YFIwFTM)
 
-    chain.mine(nextStationAt - chain.height - 1)
+    with reverts("Train moving. (Chu, Chu)"):
+        Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
 
+    chain.mine(nextStationAt - chain.height - 1)
+    print("++++++fnadjbhgnjsdfbgjdfbgjbgjsd============")
     assert Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
 
     chain.mine(1)
+
+    reservesA = solidRegistry.getReserves(
+        YFI.address, wFTM.address, False, {"from": accounts[9]}
+    )
+    assert reservesA[0] != 0
+
+    reservesB = solidRegistry.getReserves(
+        YFI.address, wFTM.address, False, {"from": accounts[9]}
+    )
+    assert reservesA[0] == reservesB[0]
+
+    chain.mine(1)
+
+    ticket = Conductive.getTicket(accounts[1], YFIwFTM)
 
     assert Conductive.burnTicket(YFIwFTM, {"from": accounts[1]})
 
