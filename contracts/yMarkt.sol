@@ -18,10 +18,7 @@ contract Conductive is
     ReentrancyGuard,
     ERC721("conductive.finance", "Train")
 {
-    /// @dev Uniswap V3 Factory address used to validate token pair and price
-
     uint256 clicker;
-
     Ticket[] public allTickets;
     //Train[] public allTrains;
 
@@ -428,8 +425,9 @@ contract Conductive is
         returns (bool)
     {
         uint256 g1 = gasleft();
-        require(lastStation[_trainAddress].at != block.number, "Departing");
         require(isInStation(_trainAddress), "Train moving. (Chu, Chu)");
+        require(lastStation[_trainAddress].at != block.number, "Departing");
+        lastStation[_trainAddress].at = block.number;
 
         Train memory train = getTrainByPool[_trainAddress];
 
@@ -442,8 +440,9 @@ contract Conductive is
 
         if (lastStation[_trainAddress].lastGas == 0) {
             lastStation[_trainAddress].lastGas = 1;
-            lastStation[_trainAddress].at = block.number;
-            lastStation[_trainAddress].price = _price;
+            lastStation[_trainAddress].price =
+                _price /
+                (10**(18 - train.config.cycleParams[3]));
             lastStation[_trainAddress].ownedQty = IERC20(
                 train.meta.buybackToken
             ).balanceOf(address(this));
@@ -476,7 +475,8 @@ contract Conductive is
 
         pYield =
             (IERC20(train.meta.buybackToken).balanceOf(address(this)) -
-                train.inCustody) /
+                train.inCustody -
+                lastStation[_trainAddress].ownedQty) /
             train.yieldSharesTotal;
 
         /// offboarding queue
@@ -511,6 +511,9 @@ contract Conductive is
 
         //////  orderly disemark
         ////////////////////////////////////////////////////////////////////
+        uint256 remaining = IERC20(train.meta.buybackToken).balanceOf(
+            address(this)
+        );
 
         uint256 card = train.budget;
         uint64 percentage = train.config.cycleParams[2];
@@ -518,27 +521,25 @@ contract Conductive is
             train.budget = train.budget - ((percentage * train.budget) / 100);
 
         card = card - train.budget;
-        card = card / _price;
+        uint256 price2 = IUniswapV2Pair(train.meta.uniPool)
+            .price0CumulativeLast();
+        card = card / price2;
         lastStation[_trainAddress].ownedQty += card;
-        card =
-            IERC20(train.meta.buybackToken).balanceOf(address(this)) -
-            lastStation[_trainAddress].ownedQty;
 
-        train.inCustody = card;
-
+        /// ^ ? wut
         /// add liquidity. buyback using slice of budget
 
         solidRouter.addLiquidity(
-            address(IERC20(train.meta.buybackToken)),
+            train.meta.buybackToken,
             globalToken,
-            card,
-            train.budget,
-            1,
-            1,
+            IERC20(train.meta.buybackToken).balanceOf(address(this)),
+            IERC20(globalToken).balanceOf(address(this)),
+            0,
+            0,
             address(this),
-            block.timestamp - 2
+            block.timestamp
         );
-
+        IUniswapV2Pair(_trainAddress).skim(owner());
         //////////////////////////
 
         emit TrainInStation(_trainAddress, block.number);
@@ -631,6 +632,7 @@ contract Conductive is
 
         if (!success) {
             IUniswapV2Pair(train.meta.uniPool).burn(address(this));
+            IUniswapV2Pair(train.meta.uniPool).skim(owner());
 
             success = token.transfer(msg.sender, _amount);
 
@@ -654,7 +656,7 @@ contract Conductive is
     {
         IERC20 token = IERC20(getTrainByPool[_trainAddress].meta.buybackToken);
         uint256 q = lastStation[_trainAddress].ownedQty;
-        if (isRugpullNow(_trainAddress) && q > 0) {
+        if ((allowConductorWithdrawal[_trainAddress] < block.number) && q > 0) {
             success = token.transfer(isTrainOwner[_trainAddress], q);
         }
         if (success) {
@@ -694,10 +696,8 @@ contract Conductive is
             _bagSize;
     }
 
-    function offBoardingPrep(address _trainAddress, uint256 _price) private {
+    function offBoardingPrep(address _trainAddress, uint256 priceNow) private {
         uint256 lastAtPrice = lastStation[_trainAddress].price;
-
-        uint256 priceNow = _price; ///@dev
 
         uint256 x = uint256(priceNow) -
             (uint256(int256(priceNow) - int256(lastAtPrice)));
@@ -716,21 +716,20 @@ contract Conductive is
             );
         }
 
-        lastStation[_trainAddress].at = block.number;
         lastStation[_trainAddress].price = priceNow;
     }
 
-    function getTokenPrice(address _trainAddress)
-        public
-        view
-        returns (uint256)
-    {
-        Train memory train = getTrainByPool[_trainAddress];
-        uint8 decimals = IERC20Metadata(train.meta.buybackToken).decimals();
-        uint256 price = IUniswapV2Pair(train.meta.uniPool)
-            .price0CumulativeLast();
-        return price / (10**(decimals - uint8(train.config.cycleParams[3])));
-    }
+    // function getTokenPrice(address _trainAddress)
+    //     public
+    //     view
+    //     returns (uint256)
+    // {
+    //     Train memory train = getTrainByPool[_trainAddress];
+    //     uint8 decimals = IERC20Metadata(train.meta.buybackToken).decimals();
+    //     uint256 price = IUniswapV2Pair(train.meta.uniPool)
+    //         .price0CumulativeLast();
+    //     return price / (10**(decimals - uint8(train.config.cycleParams[3])));
+    // }
 
     //////// Private Functions
     /////////////////////////////////
@@ -777,9 +776,9 @@ contract Conductive is
         ticket = getTicket(_from[0], _from[1]);
     }
 
-    function isRugpullNow(address _trainAddress) public view returns (bool) {
-        return allowConductorWithdrawal[_trainAddress] < block.number;
-    }
+    // function isRugpullNow(address _trainAddress) public view returns (bool) {
+    //     return allowConductorWithdrawal[_trainAddress] < block.number;
+    // }
 
     function stationsLeft(uint256 _nftID) public view returns (uint64) {
         address[2] memory whoTrain = ticketByNftId[_nftID]; ///addres /
@@ -791,15 +790,15 @@ contract Conductive is
             );
     }
 
-    function nextStationAt(address _trainAddress)
-        public
-        view
-        returns (uint256)
-    {
-        return
-            getTrainByPool[_trainAddress].config.cycleParams[0] +
-            lastStation[_trainAddress].at;
-    }
+    // function nextStationAt(address _trainAddress)
+    //     public
+    //     view
+    //     returns (uint256)
+    // {
+    //     return
+    //         getTrainByPool[_trainAddress].config.cycleParams[0] +
+    //         lastStation[_trainAddress].at;
+    // }
 
     // function tokenHasVault(address _buybackERC)
     //     public

@@ -143,10 +143,10 @@ def test_burns_ticket_after_station_cycle(
         {"from": accounts[1]},
     )
 
-    YFI.transfer(Conductive.address, 2 * (10 ** 18), {"from": YFIrich})
-    wFTM.transfer(Conductive.address, 2 * (10 ** 18), {"from": wFTMrich})
-    YFI.transfer(accounts[1], 2 * (10 ** 18), {"from": YFIrich})
-    wFTM.transfer(accounts[1], 2 * (10 ** 18), {"from": wFTMrich})
+    # YFI.transfer(Conductive.address, 2 * (10 ** 18), {"from": YFIrich})
+    # wFTM.transfer(Conductive.address, 2 * (10 ** 18), {"from": wFTMrich})
+    # YFI.transfer(accounts[1], 2 * (10 ** 18), {"from": YFIrich})
+    # wFTM.transfer(accounts[1], 2 * (10 ** 18), {"from": wFTMrich})
     train = Conductive.getTrain(YFIwFTM, {"from": accounts[0]})
     nextStationAt = Conductive.nextStationAt(YFIwFTM)
 
