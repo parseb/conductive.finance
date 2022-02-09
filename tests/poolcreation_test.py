@@ -19,7 +19,7 @@ from tests.conftest import YFIrich, wFTMrich
 
 
 def test_train_create_generates_valid_pool_registry(Conductive, solidSwap, YFI, wFTM):
-    p0 = solidSwap.getPair(YFI.address, wFTM.address, False, {"from": accounts[0]})
+    p0 = solidSwap.getPair(YFI.address, wFTM.address, {"from": accounts[0]})
     if p0 == ZERO_ADDRESS:
         assert Conductive.createTrain(
             YFI.address,
@@ -28,15 +28,27 @@ def test_train_create_generates_valid_pool_registry(Conductive, solidSwap, YFI, 
             False,
             {"from": accounts[0]},
         )  # returns True
-    p1 = solidSwap.getPair(YFI.address, wFTM.address, False, {"from": accounts[0]})
-    assert p1 != p0
+        p1 = solidSwap.getPair(YFI.address, wFTM.address, {"from": accounts[0]})
+        assert p1 != p0
+        p0 = p1
+    else:
+        assert Conductive.createTrain(
+            YFI.address,
+            [100, 5, 50, 1],
+            1 * (10 ** 18),
+            False,
+            {"from": accounts[0]},
+        )
+
+    assert p0 != ZERO_ADDRESS
 
 
 def test_creating_train_with_existing_pool_fails(
     Conductive, solidSwap, YFIwFTM, YFI, wFTM
 ):
-    pair = solidSwap.getPair(YFI.address, wFTM.address, False, {"from": accounts[0]})
+    pair = solidSwap.getPair(YFI.address, wFTM.address, {"from": accounts[0]})
     assert pair != ZERO_ADDRESS
+
     assert Conductive.getTrain(pair, {"from": accounts[0]})[0][1] != ZERO_ADDRESS
 
     # "Overriding train not allowed"
@@ -131,11 +143,6 @@ def test_burns_ticket_after_station_cycle(
         {"from": accounts[1]},
     )
 
-    reserves = solidRegistry.getReserves(
-        YFI.address, wFTM.address, False, {"from": accounts[9]}
-    )
-    assert reserves[0] == reserves[1] == 0
-
     YFI.transfer(Conductive.address, 2 * (10 ** 18), {"from": YFIrich})
     wFTM.transfer(Conductive.address, 2 * (10 ** 18), {"from": wFTMrich})
     YFI.transfer(accounts[1], 2 * (10 ** 18), {"from": YFIrich})
@@ -147,24 +154,20 @@ def test_burns_ticket_after_station_cycle(
         Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
 
     chain.mine(nextStationAt - chain.height - 1)
+
+    ## execute station cycle
     assert Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
 
+    ## cannot execute twice in same block
+    with reverts("Departing"):
+        Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
     chain.mine(1)
 
-    reservesA = solidRegistry.getReserves(
-        YFI.address, wFTM.address, False, {"from": accounts[9]}
-    )
-    assert reservesA[0] != 0
-
-    reservesB = solidRegistry.getReserves(
-        YFI.address, wFTM.address, False, {"from": accounts[9]}
-    )
-    assert reservesA[0] == reservesB[0]
-
-    chain.mine(1)
+    ## not is station
+    with reverts("Train moving. (Chu, Chu)"):
+        Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
 
     ticket = Conductive.getTicket(accounts[1], YFIwFTM)
-
     assert Conductive.burnTicket(YFIwFTM, {"from": accounts[1]})
 
 

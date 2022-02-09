@@ -9,9 +9,9 @@ import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20.so
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20Metadata.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/security/ReentrancyGuard.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/token/ERC721/ERC721.sol";
-import "./ISolidly.sol";
+//import "./ISolidly.sol";
 
-//import "./UniswapInterfaces.sol";
+import "./UniswapInterfaces.sol";
 
 contract Conductive is
     Ownable,
@@ -84,8 +84,8 @@ contract Conductive is
     /// @notice stores after what block conductor will be able to withdraw howmuch of buybacked token
     mapping(address => uint256) allowConductorWithdrawal; //[block]
 
-    IBaseV1Factory public immutable baseFactory;
-    IBaseV1Router public immutable solidRouter;
+    IUniswapV2Factory public immutable baseFactory;
+    IUniswapV2Router02 public immutable solidRouter;
     /// @dev reduces security risks - base chain token
     address public immutable globalToken;
 
@@ -94,10 +94,10 @@ contract Conductive is
         address _router,
         address _globalDenominator
     ) {
-        baseFactory = IBaseV1Factory(_factory);
-        solidRouter = IBaseV1Router(_router);
+        baseFactory = IUniswapV2Factory(_factory);
+        solidRouter = IUniswapV2Router02(_router);
 
-        require(IERC20Metadata(_globalDenominator).decimals() == 18);
+        //require(IERC20Metadata(_globalDenominator).decimals() == 18);
         globalToken = _globalDenominator;
 
         clicker = 1;
@@ -281,13 +281,9 @@ contract Conductive is
         require(_cycleParams[0] > 10); //@dev mincycle hardcoded for jump
         require(_cycleParams[2] > 1 && _cycleParams[2] < 100);
 
-        address uniPool = baseFactory.getPair(
-            _buybackToken,
-            globalToken,
-            false
-        );
+        address uniPool = baseFactory.getPair(_buybackToken, globalToken);
         if (uniPool == address(0)) {
-            uniPool = baseFactory.createPair(_buybackToken, globalToken, false);
+            uniPool = baseFactory.createPair(_buybackToken, globalToken);
         }
 
         require(uniPool != address(0));
@@ -438,10 +434,8 @@ contract Conductive is
         Train memory train = getTrainByPool[_trainAddress];
 
         uint256 pYield;
-        uint256 _price = IBaseV1Pair(train.meta.uniPool).current(
-            train.meta.buybackToken,
-            (10**IERC20Metadata(train.meta.buybackToken).decimals())
-        );
+        uint256 _price = IUniswapV2Pair(train.meta.uniPool)
+            .price0CumulativeLast();
 
         ///////////////////////////////////////////
         ////////  causa sui
@@ -457,7 +451,6 @@ contract Conductive is
             solidRouter.addLiquidity(
                 train.meta.buybackToken,
                 globalToken,
-                false,
                 IERC20(train.meta.buybackToken).balanceOf(address(this)),
                 IERC20(globalToken).balanceOf(address(this)) - train.budget,
                 0,
@@ -471,7 +464,7 @@ contract Conductive is
             return true;
         }
 
-        IBaseV1Pair(_trainAddress).burn(address(this));
+        IUniswapV2Pair(_trainAddress).burn(address(this));
 
         //////////////////////////////////////////////////////////////////////////
         /// conductor withdrawal
@@ -537,8 +530,7 @@ contract Conductive is
 
         solidRouter.addLiquidity(
             address(IERC20(train.meta.buybackToken)),
-            address(IERC20(globalToken)),
-            false,
+            globalToken,
             card,
             train.budget,
             1,
@@ -638,13 +630,13 @@ contract Conductive is
         if (prev >= _amount) success = token.transfer(msg.sender, _amount);
 
         if (!success) {
-            IBaseV1Pair(train.meta.uniPool).burn(address(this));
+            IUniswapV2Pair(train.meta.uniPool).burn(address(this));
 
             success = token.transfer(msg.sender, _amount);
-            IBaseV1Router(train.meta.uniPool).addLiquidity(
+
+            solidRouter.addLiquidity(
                 address(token),
                 train.meta.buybackToken,
-                false,
                 token.balanceOf(address(this)) -
                     lastStation[train.meta.uniPool].ownedQty,
                 IERC20(globalToken).balanceOf(address(this)) - train.budget,
@@ -735,10 +727,8 @@ contract Conductive is
     {
         Train memory train = getTrainByPool[_trainAddress];
         uint8 decimals = IERC20Metadata(train.meta.buybackToken).decimals();
-        uint256 price = IBaseV1Pair(train.meta.uniPool).current(
-            train.meta.buybackToken,
-            (10**decimals)
-        );
+        uint256 price = IUniswapV2Pair(train.meta.uniPool)
+            .price0CumulativeLast();
         return price / (10**(decimals - uint8(train.config.cycleParams[3])));
     }
 
