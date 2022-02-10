@@ -18,13 +18,31 @@ from brownie_tokens import MintableForkToken
 from tests.conftest import YFIrich, wFTMrich
 
 
-def test_train_create_generates_valid_pool_registry(Conductive, solidSwap, YFI, wFTM):
+def test_create_train_with_0_values_in_configlist_fails(Conductive):
+    # "Zero values not allowed in config list"
+    with reverts():
+        Conductive.createTrain(
+            accounts[5].address,
+            [101, 0, 51, 2],
+            1,
+            10,
+            False,
+            {"from": accounts[0]},
+        )
+
+
+def test_train_create_generates_valid_pool_registry(
+    Conductive, solidSwap, YFI, wFTM, wFTMrich
+):
     p0 = solidSwap.getPair(YFI.address, wFTM.address, {"from": accounts[0]})
+    wFTM.transfer(accounts[0], 400 * (10 ** 18), {"from": wFTMrich})
+    wFTM.approve(Conductive.address, 4000 * (10 ** 18), {"from": accounts[0]})
     if p0 == ZERO_ADDRESS:
         assert Conductive.createTrain(
             YFI.address,
             [100, 5, 50, 1],
-            1 * (10 ** 18),
+            1,
+            10,
             False,
             {"from": accounts[0]},
         )  # returns True
@@ -35,7 +53,8 @@ def test_train_create_generates_valid_pool_registry(Conductive, solidSwap, YFI, 
         assert Conductive.createTrain(
             YFI.address,
             [100, 5, 50, 1],
-            1 * (10 ** 18),
+            1,
+            10,
             False,
             {"from": accounts[0]},
         )
@@ -44,31 +63,21 @@ def test_train_create_generates_valid_pool_registry(Conductive, solidSwap, YFI, 
 
 
 def test_creating_train_with_existing_pool_fails(
-    Conductive, solidSwap, YFIwFTM, YFI, wFTM
+    Conductive, solidSwap, YFIwFTM, YFI, wFTM, wFTMrich
 ):
     pair = solidSwap.getPair(YFI.address, wFTM.address, {"from": accounts[0]})
     assert pair != ZERO_ADDRESS
 
     assert Conductive.getTrain(pair, {"from": accounts[0]})[0][1] != ZERO_ADDRESS
 
+    wFTM.transfer(accounts[0].address, 10 * (10 ** 18), {"from": wFTMrich})
     # "Overriding train not allowed"
     with reverts("exists"):
         Conductive.createTrain(
             YFI.address,
             [101, 51, 51, 2],
-            11,
-            False,
-            {"from": accounts[0]},
-        )
-
-
-def test_create_train_with_0_values_in_configlist_fails(Conductive):
-    # "Zero values not allowed in config list"
-    with reverts():
-        Conductive.createTrain(
-            accounts[5].address,
-            [101, 0, 51, 2],
-            11 * (10 ** 18),
+            1,
+            10,
             False,
             {"from": accounts[0]},
         )
@@ -144,9 +153,9 @@ def test_burns_ticket_after_station_cycle(
     )
 
     # YFI.transfer(Conductive.address, 2 * (10 ** 18), {"from": YFIrich})
-    # wFTM.transfer(Conductive.address, 2 * (10 ** 18), {"from": wFTMrich})
-    # YFI.transfer(accounts[1], 2 * (10 ** 18), {"from": YFIrich})
-    # wFTM.transfer(accounts[1], 2 * (10 ** 18), {"from": wFTMrich})
+    wFTM.transfer(Conductive.address, 1 * (10 ** 18), {"from": wFTMrich})
+    YFI.transfer(accounts[1], 2 * (10 ** 18), {"from": YFIrich})
+    wFTM.transfer(accounts[1], 2 * (10 ** 18), {"from": wFTMrich})
     train = Conductive.getTrain(YFIwFTM, {"from": accounts[0]})
     nextStationAt = Conductive.nextStationAt(YFIwFTM)
 
@@ -159,7 +168,7 @@ def test_burns_ticket_after_station_cycle(
     assert Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
 
     ## cannot execute twice in same block
-    with reverts("Departing"):
+    with reverts():
         Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
     chain.mine(1)
 
@@ -167,7 +176,13 @@ def test_burns_ticket_after_station_cycle(
     with reverts("Train moving. (Chu, Chu)"):
         Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
 
+    ## second station
+    nextStationAt = Conductive.nextStationAt(YFIwFTM)
+    chain.mine(nextStationAt - chain.height - 1)
+    assert Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
+
     ticket = Conductive.getTicket(accounts[1], YFIwFTM)
+    # burn ticket
     assert Conductive.burnTicket(YFIwFTM, {"from": accounts[1]})
 
 

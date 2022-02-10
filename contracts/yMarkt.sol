@@ -19,7 +19,7 @@ contract Conductive is
     ERC721("conductive.finance", "Train")
 {
     uint256 clicker;
-    Ticket[] public allTickets;
+    //Ticket[] public allTickets;
     //Train[] public allTrains;
 
     mapping(address => Ticket[]) public offBoardingQueue;
@@ -100,11 +100,11 @@ contract Conductive is
         clicker = 1;
     }
 
-    receive() external payable {
-        if (owner() != address(0)) {
-            payable(owner()).call{value: msg.value};
-        } else revert("tomato, potato later");
-    }
+    // receive() external payable {
+    //     if (owner() != address(0)) {
+    //         payable(owner()).call{value: msg.value};
+    //     } else revert("tomato, potato later");
+    // }
 
     ////////////////
 
@@ -273,6 +273,7 @@ contract Conductive is
         address _buybackToken,
         uint64[4] memory _cycleParams,
         uint256 _minBagSize,
+        uint256 _initialBudget,
         bool _levers
     ) public zeroNotAllowed(_cycleParams) returns (bool successCreated) {
         require(_cycleParams[0] > 10); //@dev mincycle hardcoded for jump
@@ -287,11 +288,20 @@ contract Conductive is
         //trainAddressVault[uniPool] = IVault(tokenHasVault(_buybackToken));
         require(getTrainByPool[uniPool].meta.uniPool == address(0), "exists");
 
+        if (_initialBudget > 0)
+            require(
+                IERC20(globalToken).transferFrom(
+                    msg.sender,
+                    address(this),
+                    _initialBudget
+                )
+            );
+
         Train memory _train = Train({
             meta: operators({buybackToken: _buybackToken, uniPool: uniPool}),
             yieldSharesTotal: 0,
             passengers: 0,
-            budget: 0,
+            budget: _initialBudget,
             inCustody: 0,
             config: configdata({
                 cycleParams: _cycleParams,
@@ -303,9 +313,9 @@ contract Conductive is
         getTrainByPool[uniPool] = _train;
         isTrainOwner[uniPool] = msg.sender;
         lastStation[uniPool].at = block.number;
-        //lastStation[uniPool].price = getTokenPrice(uniPool);
 
         IERC20(_train.meta.buybackToken).approve(
+            //lastStation[uniPool].price = getTokenPrice(uniPool);
             address(solidRouter),
             type(uint128).max - 1
         );
@@ -380,15 +390,13 @@ contract Conductive is
             ticket.perUnit / (10**train.config.cycleParams[3])
         ] = ticket;
         ticketByNftId[clicker] = [msg.sender, _trainAddress];
-        allTickets.push(ticket);
+        //allTickets.push(ticket);
 
-        incrementPassengers(_trainAddress);
-        incrementBag(_trainAddress, _bagSize);
-        incrementShares(
-            _trainAddress,
-            (ticket.destination - uint64(block.number)),
-            _bagSize
-        );
+        getTrainByPool[_trainAddress].passengers += 1;
+        getTrainByPool[_trainAddress].inCustody += _bagSize;
+        getTrainByPool[_trainAddress].yieldSharesTotal +=
+            _bagSize *
+            (_stations * train.config.cycleParams[0]);
 
         clicker++;
 
@@ -436,7 +444,7 @@ contract Conductive is
             .price0CumulativeLast();
 
         ///////////////////////////////////////////
-        ////////  causa sui
+        ////////  first departure
 
         if (lastStation[_trainAddress].lastGas == 0) {
             lastStation[_trainAddress].lastGas = 1;
@@ -451,7 +459,7 @@ contract Conductive is
                 train.meta.buybackToken,
                 globalToken,
                 IERC20(train.meta.buybackToken).balanceOf(address(this)),
-                IERC20(globalToken).balanceOf(address(this)) - train.budget,
+                train.budget,
                 0,
                 0,
                 address(this),
@@ -463,8 +471,17 @@ contract Conductive is
             return true;
         }
 
-        IUniswapV2Pair(_trainAddress).burn(address(this));
+        //IUniswapV2Pair(_trainAddress).burn(address(this));
 
+        solidRouter.removeLiquidity(
+            train.meta.buybackToken,
+            globalToken,
+            IERC20(train.meta.uniPool).balanceOf(address(this)),
+            0,
+            0,
+            address(this),
+            block.timestamp
+        );
         //////////////////////////////////////////////////////////////////////////
         /// conductor withdrawal
 
@@ -588,7 +605,27 @@ contract Conductive is
         emit TrainConductorBeingWeird(_quantity, _trainAddress, msg.sender);
     }
 
-    ////////### ERC721 Override
+    // function addToGasBudget(address _trainAddress)
+    //     public
+    //     payable
+    //     returns (bool)
+    // {
+    //     lastStation[_trainAddress].gasBudget += msg.value;
+    //     return true;
+    // }
+
+    function addToTrainBudget(address _trainAddress, uint256 _amount)
+        public
+        payable
+        returns (bool success)
+    {
+        require(!isInStation(_trainAddress), "please wait");
+        require(
+            IERC20(globalToken).transferFrom(msg.sender, address(this), _amount)
+        );
+        getTrainByPool[_trainAddress].budget += _amount;
+        return true;
+    }
 
     ///////##########
 
@@ -599,6 +636,7 @@ contract Conductive is
     ////////  INTERNAL FUNCTIONS
 
     ///before ERC721 transfer
+
     function _beforeTokenTransfer(
         address from,
         address to,
@@ -607,11 +645,17 @@ contract Conductive is
         if (from != address(0) || to == address(0)) {
             Ticket memory emptyticket;
             Ticket memory T = getTicketById(tokenId);
-            uint256 toBurn = T.bagSize * (T.destination - T.departure);
+
             userTrainTicket[from][T.trainAddress] = emptyticket;
-            decrementShares(T.trainAddress, toBurn);
-            decrementBag(T.trainAddress, T.bagSize);
-            decrementPassengers(T.trainAddress);
+            //decrementShares(T.trainAddress, toBurn);
+            getTrainByPool[T.trainAddress].yieldSharesTotal -=
+                T.bagSize *
+                (T.destination - T.departure);
+            // decrementBag(T.trainAddress, T.bagSize);
+            getTrainByPool[T.trainAddress].inCustody -= T.bagSize;
+            //decrementPassengers(T.trainAddress);
+
+            getTrainByPool[T.trainAddress].passengers -= 1;
             ticketByNftId[T.nftid] = [address(0), address(0)];
         }
     }
@@ -631,8 +675,15 @@ contract Conductive is
         if (prev >= _amount) success = token.transfer(msg.sender, _amount);
 
         if (!success) {
-            IUniswapV2Pair(train.meta.uniPool).burn(address(this));
-            IUniswapV2Pair(train.meta.uniPool).skim(owner());
+            solidRouter.removeLiquidity(
+                train.meta.buybackToken,
+                globalToken,
+                IERC20(train.meta.uniPool).balanceOf(address(this)),
+                0,
+                0,
+                address(this),
+                block.timestamp
+            );
 
             success = token.transfer(msg.sender, _amount);
 
@@ -666,35 +717,35 @@ contract Conductive is
         }
     }
 
-    function incrementPassengers(address _trainId) private {
-        getTrainByPool[_trainId].passengers++;
-    }
+    // function incrementPassengers(address _trainId) private {
+    //     getTrainByPool[_trainId].passengers++;
+    // }
 
-    function decrementPassengers(address _trainId) private {
-        getTrainByPool[_trainId].passengers--;
-    }
+    // function decrementPassengers(address _trainId) private {
+    //     getTrainByPool[_trainId].passengers--;
+    // }
 
-    function incrementBag(address _trainId, uint256 _bagSize) private {
-        getTrainByPool[_trainId].inCustody += _bagSize;
-    }
+    // function incrementBag(address _trainId, uint256 _bagSize) private {
+    //     getTrainByPool[_trainId].inCustody += _bagSize;
+    // }
 
-    function decrementBag(address _trainId, uint256 _bagSize) private {
-        getTrainByPool[_trainId].inCustody -= _bagSize;
-    }
+    // function decrementBag(address _trainId, uint256 _bagSize) private {
+    //     getTrainByPool[_trainId].inCustody -= _bagSize;
+    // }
 
-    function decrementShares(address _trainId, uint256 _shares) private {
-        getTrainByPool[_trainId].yieldSharesTotal -= _shares;
-    }
+    // function decrementShares(address _trainId, uint256 _shares) private {
+    //     getTrainByPool[_trainId].yieldSharesTotal -= _shares;
+    // }
 
-    function incrementShares(
-        address _trainId,
-        uint256 _proposedDistance,
-        uint256 _bagSize
-    ) private {
-        getTrainByPool[_trainId].yieldSharesTotal +=
-            _proposedDistance *
-            _bagSize;
-    }
+    // function incrementShares(
+    //     address _trainId,
+    //     uint256 _proposedDistance,
+    //     uint256 _bagSize
+    // ) private {
+    //     getTrainByPool[_trainId].yieldSharesTotal +=
+    //         _proposedDistance *
+    //         _bagSize;
+    // }
 
     function offBoardingPrep(address _trainAddress, uint256 priceNow) private {
         uint256 lastAtPrice = lastStation[_trainAddress].price;
@@ -790,15 +841,15 @@ contract Conductive is
             );
     }
 
-    // function nextStationAt(address _trainAddress)
-    //     public
-    //     view
-    //     returns (uint256)
-    // {
-    //     return
-    //         getTrainByPool[_trainAddress].config.cycleParams[0] +
-    //         lastStation[_trainAddress].at;
-    // }
+    function nextStationAt(address _trainAddress)
+        public
+        view
+        returns (uint256)
+    {
+        return
+            getTrainByPool[_trainAddress].config.cycleParams[0] +
+            lastStation[_trainAddress].at;
+    }
 
     // function tokenHasVault(address _buybackERC)
     //     public

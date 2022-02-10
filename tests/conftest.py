@@ -6,7 +6,7 @@ import time
 
 @pytest.fixture(scope="module")
 def Conductive(Conductive, accounts):
-    return accounts[0].deploy(
+    return accounts[8].deploy(
         Conductive,
         "0xc35DADB65012eC5796536bD9864eD8773aBc74C4",
         "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506",
@@ -25,7 +25,7 @@ def Conductive(Conductive, accounts):
 @pytest.fixture(scope="module")
 def solidSwap():
     univ2 = Contract.from_explorer("0xc35DADB65012eC5796536bD9864eD8773aBc74C4")
-    # univ2.set_alias("uniswap")
+    univ2.set_alias("pairF")
     time.sleep(1)
     yield univ2
 
@@ -33,14 +33,13 @@ def solidSwap():
 @pytest.fixture(scope="module")
 def solidRegistry():
     univ2 = Contract.from_explorer("0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506")
-    # univ2.set_alias("uniswap")
+    univ2.set_alias("swapRegistry")
     yield univ2
 
 
 @pytest.fixture(scope="module")
 def YFI():
     YFI = MintableForkToken("0xBbba073C31bF03b8ACf7c28EF0738DeCF3695683")
-    YFI.set_alias("yfi")
     time.sleep(1)
     return YFI
 
@@ -53,14 +52,14 @@ def YFIrich():
 
 
 @pytest.fixture(scope="module")
-def wFTM():
+def wFTM(Conductive):
     wftm = MintableForkToken("0x8f3cf7ad23cd3cadbd9735aff958023239c6a063")
-    wftm.set_alias("wftm")
     return wftm
 
 
 @pytest.fixture(scope="module")
-def wFTMrich():
+def wFTMrich(wFTM):
+    wFTM.transfer(accounts[0], 1000 * (10 ** 18), {"from": accounts[-1]})
     return accounts[-1]
 
 
