@@ -11,13 +11,13 @@ import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/security/ReentrancyG
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/token/ERC721/ERC721.sol";
 
 import "./UniswapInterfaces.sol";
-import "./Station.sol";
+import "./ITrainSpotting.sol";
 
 contract Conductive is
+    ERC721("conductive.finance", "Train"),
     Ownable,
     ReentrancyGuard,
-    TrainSpotting,
-    ERC721("conductive.finance", "Train")
+    ITrainSpotting
 {
     uint256 clicker;
     //Ticket[] public allTickets;
@@ -43,45 +43,48 @@ contract Conductive is
     /// @notice stores after what block conductor will be able to withdraw howmuch of buybacked token
     mapping(address => uint256) allowConductorWithdrawal; //[block]
 
-    IUniswapV2Factory public baseFactory;
-    IUniswapV2Router02 public solidRouter;
-    /// @dev reduces security risks - base chain token
-    address public immutable globalToken;
+    IUniswapV2Factory baseFactory;
+    IUniswapV2Router02 solidRouter;
+    ITrainSpotting Spotter;
 
-    constructor(
-        address _factory,
-        address _router,
-        address _globalDenominator
-    ) {
+    /// @dev reduced surface
+    address globalToken;
+
+    constructor(address _factory, address _SpotterAddress) {
         baseFactory = IUniswapV2Factory(_factory);
-        solidRouter = IUniswapV2Router02(_router);
 
-        //require(IERC20Metadata(_globalDenominator).decimals() == 18);
-        globalToken = _globalDenominator;
+        Spotter = ITrainSpotting(_SpotterAddress);
+        (address solid, address token) = Spotter._spottingParams(
+            address(0),
+            address(this),
+            address(0)
+        );
 
+        solidRouter = IUniswapV2Router02(solid);
+        globalToken = token;
         clicker = 1;
     }
 
-    // receive() external payable {
-    //     if (owner() != address(0)) {
-    //         payable(owner()).call{value: msg.value};
-    //     } else revert("tomato, potato later");
+    // function init() public returns (bool s) {
+    //     s = _SpottingParams(globalToken, address(this), address(solidRouter));
     // }
 
-    ////////////////
+    function updatesEnvironment(
+        address _factory,
+        address _router,
+        address _gDenom
+    ) external onlyOwner returns (bool) {
+        require(
+            _factory != address(0) &&
+                _router != address(0) &&
+                _gDenom != address(0)
+        );
 
-    // function updateEnvironment(
-    //     address _poolFactory,
-    //     address _vRegistry,
-    //     address _router
-    // ) public onlyOwner {
-    //     require(_poolFactory != address(0) && _vRegistry != address(0));
+        baseFactory = IUniswapV2Factory(_factory);
+        solidRouter = IUniswapV2Router02(_router);
 
-    //     baseFactory = IBaseV1Factory(_poolFactory);
-    //     yRegistry = IV2Registry(_vRegistry);
-    //     solidRouter = IUniswapV2Router02(_router);
-    //     emit RailNetworkChanged(address(baseFactory), _poolFactory);
-    // }
+        emit RailNetworkChanged(address(baseFactory), _factory);
+    }
 
     ////////////////////////////////
     ///////  ERRORS
@@ -195,6 +198,20 @@ contract Conductive is
 
     ///////// Modifiers
     //////////////////////////////
+
+    /// fallback
+    fallback() external {
+        emit FallbackCall(msg.sender, msg.data);
+    }
+
+    receive() external payable {
+        (bool s, ) = payable(owner()).call{value: msg.value}("on purple");
+        if (!s) {
+            emit FallbackCall(msg.sender, msg.data);
+        }
+    }
+
+    ////////////////////////////////
 
     function changeTrainParams(
         address _trainAddress,
@@ -360,7 +377,7 @@ contract Conductive is
     function trainStation(address _trainAddress) public returns (bool s) {
         uint256 g1 = gasleft();
         require(isInStation(_trainAddress), "Train moving. (Chu, Chu)");
-        stationData memory prevStation = _getLastStation(_trainAddress);
+        stationData memory prevStation = Spotter._getLastStation(_trainAddress);
         require(prevStation.at != block.number, "Departing");
 
         Train memory train = getTrainByPool[_trainAddress];
@@ -379,7 +396,7 @@ contract Conductive is
                 block.timestamp
             );
             emit TrainStarted(_trainAddress, train);
-            return _trainStation(train, _price, g1);
+            return Spotter._trainStation(train, _price, g1);
         }
 
         solidRouter.removeLiquidity(
@@ -393,7 +410,10 @@ contract Conductive is
         );
 
         if (allowConductorWithdrawal[train.meta.uniPool] >= block.number) {
-            _withdrawBuybackToken(train, isTrainOwner[train.meta.uniPool]);
+            Spotter._withdrawBuybackToken(
+                train,
+                isTrainOwner[train.meta.uniPool]
+            );
             allowConductorWithdrawal[_trainAddress] = 0;
         }
 
@@ -405,18 +425,12 @@ contract Conductive is
 
         for (uint256 i = 0; i < toBurnTickets.length; i++) {
             Ticket memory _t = toBurnTickets[i];
-            if (
-                _offBoard(
-                    _t,
-                    train,
-                    train.meta.buybackToken,
-                    ticketByNftId[_t.nftid][0]
-                )
-            ) _burn(_t.nftid);
+            if (Spotter._offBoard(_t, train, ticketByNftId[_t.nftid][0]))
+                _burn(_t.nftid);
             delete offBoardingQueue[_trainAddress][i];
         }
 
-        s = _trainStation(train, _price, g1);
+        s = Spotter._trainStation(train, _price, g1);
     }
 
     function offBoardingPrep(
@@ -607,8 +621,11 @@ contract Conductive is
         }
     }
 
-    function isInStation(address _trainAddress) public view returns (bool) {
-        return _isInStation(getTrainByPool[_trainAddress]);
+    function isInStation(address _trainAddress) public view returns (bool x) {
+        x = Spotter._isInStation(
+            getTrainByPool[_trainAddress].config.cycleParams[0],
+            getTrainByPool[_trainAddress].meta.uniPool
+        );
     }
 
     // function incrementPassengers(address _trainId) private {
@@ -707,7 +724,7 @@ contract Conductive is
     {
         return
             getTrainByPool[_trainAddress].config.cycleParams[0] +
-            _getLastStation(_trainAddress).at;
+            Spotter._getLastStation(_trainAddress).at;
     }
 
     // function tokenHasVault(address _buybackERC)

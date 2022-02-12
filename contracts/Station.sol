@@ -1,62 +1,34 @@
 //SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.4;
 
-import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/security/ReentrancyGuard.sol";
-import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/access/Ownable.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20.sol";
 import "./UniswapInterfaces.sol";
+import "./ITrainSpotting.sol";
 
-contract TrainSpotting is ReentrancyGuard {
-    struct stationData {
-        uint256 at;
-        uint256 price;
-        uint256 ownedQty;
-        uint256 lastGas;
-    }
-
-    struct operators {
-        address buybackToken; //buyback token contract address
-        address uniPool; //address of the uniswap pool ^
-    }
-
-    struct configdata {
-        uint64[4] cycleParams; // [cycleFreq, minDistance, budgetSlicer, perDecimalDepth]
-        uint256 minBagSize; // min bag size
-        bool controlledSpeed; // if true, facilitate speed management
-    }
-
-    struct Train {
-        operators meta;
-        uint256 yieldSharesTotal; //increments on cycle, decrements on offboard
-        uint256 budget; //total disposable budget
-        uint256 inCustody; //total bag volume
-        uint64 passengers; //unique participants/positions
-        configdata config; //configdata
-    }
-
-    struct Ticket {
-        uint128 destination; //promises to travel to block
-        uint128 departure; // created on block
-        uint256 bagSize; //amount token
-        uint256 perUnit; //buyout price
-        address trainAddress; //train ID (pair pool)
-        uint256 nftid; //nft id
-    }
-
+contract TrainSpotting is ITrainSpotting {
     mapping(address => stationData) public lastStation;
 
-    address immutable globalToken;
-    address immutable mainStation;
+    address globalToken;
+    address centralStation;
     IUniswapV2Router02 solidRouter;
 
-    constructor(
-        address _globalToken,
-        address _mainStation,
-        address _router
-    ) public {
-        globalToken = _globalToken;
-        mainStation = _mainStation;
+    constructor(address _denominator, address _router) {
         solidRouter = IUniswapV2Router02(_router);
+        globalToken = _denominator;
+    }
+
+    function _spottingParams(
+        address _denominator,
+        address _centralStation,
+        address _reRouter
+    ) internal returns (address, address) {
+        require(msg.sender == centralStation || centralStation == address(0));
+        globalToken = _denominator;
+        centralStation = _centralStation;
+        if (_reRouter != address(0))
+            solidRouter = IUniswapV2Router02(_reRouter);
+        if (_denominator != address(0)) globalToken = _denominator;
+        return (address(solidRouter), globalToken);
     }
 
     event TrainInStation(address indexed _trainAddress, uint256 _nrstation);
@@ -71,8 +43,8 @@ contract TrainSpotting is ReentrancyGuard {
         Train memory _train,
         uint256 _price,
         uint256 _g1
-    ) internal nonReentrant returns (bool) {
-        require(msg.sender == mainStation);
+    ) internal returns (bool) {
+        require(msg.sender == centralStation);
 
         ///////////////////////////////////////////
         ////////  first departure
@@ -84,7 +56,7 @@ contract TrainSpotting is ReentrancyGuard {
                 (10**(18 - _train.config.cycleParams[3]));
             lastStation[_trainAddress].ownedQty = IERC20(
                 _train.meta.buybackToken
-            ).balanceOf(mainStation);
+            ).balanceOf(centralStation);
 
             lastStation[_trainAddress].lastGas = _g1 - gasleft();
             return true;
@@ -92,7 +64,7 @@ contract TrainSpotting is ReentrancyGuard {
 
         ////////////////////////////////////////////////////////////////////
         uint256 remaining = IERC20(_train.meta.buybackToken).balanceOf(
-            mainStation
+            centralStation
         );
 
         uint256 card = _train.budget;
@@ -118,7 +90,7 @@ contract TrainSpotting is ReentrancyGuard {
             IERC20(globalToken).balanceOf(address(this)),
             0,
             0,
-            mainStation,
+            centralStation,
             block.timestamp
         );
 
@@ -141,12 +113,14 @@ contract TrainSpotting is ReentrancyGuard {
         Ticket memory t,
         Train memory _train,
         address toWho
-    ) internal returns (bool success) {
+    ) external returns (bool success) {
+        require(msg.sender == centralStation);
+
         uint256 _shares;
 
         //@dev oot incentivises predictability
         uint256 pYield = (IERC20(_train.meta.buybackToken).balanceOf(
-            mainStation
+            centralStation
         ) -
             _train.inCustody -
             lastStation[t.trainAddress].ownedQty) / _train.yieldSharesTotal;
@@ -185,19 +159,20 @@ contract TrainSpotting is ReentrancyGuard {
         }
     }
 
-    function _getLastStation(address _train) public view returns (stationData) {
+    function _getLastStation(address _train)
+        external
+        view
+        returns (stationData memory)
+    {
         return lastStation[_train];
     }
 
-    function _isInStation(Train memory _train)
-        internal
+    function _isInStation(uint256 _cycleZero, address _trackAddr)
+        external
         view
-        returns (bool inStation)
+        returns (bool)
     {
-        if (
-            _train.config.cycleParams[0] +
-                lastStation[_train.meta.uniPool].at ==
-            block.number
-        ) inStation = true;
+        if (_cycleZero + lastStation[_trackAddr].at == block.number)
+            return true;
     }
 }
