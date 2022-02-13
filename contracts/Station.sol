@@ -4,8 +4,9 @@ pragma solidity 0.8.4;
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20.sol";
 import "./UniswapInterfaces.sol";
 import "./ITrainSpotting.sol";
+import "./StructsDataType.sol";
 
-contract TrainSpotting is ITrainSpotting {
+contract TrainSpotting {
     mapping(address => stationData) public lastStation;
 
     address globalToken;
@@ -21,7 +22,7 @@ contract TrainSpotting is ITrainSpotting {
         address _denominator,
         address _centralStation,
         address _reRouter
-    ) internal returns (address, address) {
+    ) external returns (address, address) {
         require(msg.sender == centralStation || centralStation == address(0));
         globalToken = _denominator;
         centralStation = _centralStation;
@@ -36,57 +37,51 @@ contract TrainSpotting is ITrainSpotting {
     event TrainConductorWithdrawal(
         address buybackToken,
         address trainAddress,
+        address who,
         uint256 quantity
     );
 
     function _trainStation(
-        Train memory _train,
-        uint256 _price,
-        uint256 _g1
-    ) internal returns (bool) {
+        address[2] memory addresses,
+        uint256[5] memory context
+    ) external returns (bool) {
         require(msg.sender == centralStation);
 
         ///////////////////////////////////////////
         ////////  first departure
-        address _trainAddress = _train.meta.uniPool;
 
-        if (lastStation[_trainAddress].lastGas == 0) {
-            lastStation[_trainAddress].price =
-                _price /
-                (10**(18 - _train.config.cycleParams[3]));
-            lastStation[_trainAddress].ownedQty = IERC20(
-                _train.meta.buybackToken
-            ).balanceOf(centralStation);
+        if (lastStation[addresses[0]].lastGas == 0) {
+            lastStation[addresses[0]].price =
+                context[0] /
+                (10**(18 - context[3]));
+            lastStation[addresses[0]].ownedQty = IERC20(addresses[1]).balanceOf(
+                centralStation
+            );
 
-            lastStation[_trainAddress].lastGas = _g1 - gasleft();
+            lastStation[addresses[0]].lastGas = context[1] - gasleft();
             return true;
         }
 
         ////////////////////////////////////////////////////////////////////
-        uint256 remaining = IERC20(_train.meta.buybackToken).balanceOf(
-            centralStation
-        );
+        uint256 remaining = IERC20(addresses[1]).balanceOf(centralStation);
 
-        uint256 card = _train.budget;
-        uint64 percentage = _train.config.cycleParams[2];
-        if (_train.budget > 0)
-            _train.budget =
-                _train.budget -
-                ((percentage * _train.budget) / 100);
+        uint256 card = context[2];
+        uint64 percentage = uint64(context[4]);
+        if (context[2] > 0)
+            context[2] = context[2] - ((percentage * context[2]) / 100);
 
-        card = card - _train.budget;
-        uint256 price2 = IUniswapV2Pair(_train.meta.uniPool)
-            .price0CumulativeLast();
+        card = card - context[2];
+        uint256 price2 = IUniswapV2Pair(addresses[0]).price0CumulativeLast();
         card = card / price2;
-        lastStation[_trainAddress].ownedQty += card;
+        lastStation[addresses[0]].ownedQty += card;
 
         /// ^ ? wut
         /// add liquidity. buyback using slice of budget
 
         solidRouter.addLiquidity(
-            _train.meta.buybackToken,
+            addresses[1],
             globalToken,
-            IERC20(_train.meta.buybackToken).balanceOf(address(this)),
+            IERC20(addresses[1]).balanceOf(address(this)),
             IERC20(globalToken).balanceOf(address(this)),
             0,
             0,
@@ -96,64 +91,62 @@ contract TrainSpotting is ITrainSpotting {
 
         //////////////////////////
 
-        emit TrainInStation(_trainAddress, block.number);
+        emit TrainInStation(addresses[0], block.number);
         ///@dev review OoO
 
-        lastStation[_trainAddress].lastGas = (_g1 - (_g1 - gasleft()));
-        lastStation[_trainAddress].price = _price;
+        lastStation[addresses[0]].lastGas = (context[1] -
+            (context[1] - gasleft()));
+        lastStation[addresses[0]].price = context[0];
 
         (bool s, ) = tx.origin.call{
-            value: lastStation[_trainAddress].lastGas * 2
+            value: lastStation[addresses[0]].lastGas * 2
         }("gas money");
 
         return s;
     }
 
     function _offBoard(
-        Ticket memory t,
-        Train memory _train,
-        address toWho
+        uint256[6] memory params, ///[t.destination, t.departure, t.bagSize, t.perUnit, inCustody, yieldSharesTotal]
+        address[3] memory addresses ///toWho, trainAddress, bToken
     ) external returns (bool success) {
         require(msg.sender == centralStation);
 
-        uint256 _shares;
+        uint256 shares;
+        //@dev sharevalue degradation incentivises predictability
+        uint256 pYield = (IERC20(addresses[2]).balanceOf(centralStation) -
+            params[4] -
+            lastStation[addresses[2]].ownedQty) / params[5];
 
-        //@dev oot incentivises predictability
-        uint256 pYield = (IERC20(_train.meta.buybackToken).balanceOf(
-            centralStation
-        ) -
-            _train.inCustody -
-            lastStation[t.trainAddress].ownedQty) / _train.yieldSharesTotal;
-
-        if (t.destination < block.number) {
-            _shares = (t.destination - t.departure) * t.bagSize;
-            success = IERC20(_train.meta.buybackToken).transfer(
-                toWho,
-                (pYield * _shares + t.bagSize)
+        if (params[0] < block.number) {
+            shares = (params[0] - params[1]) * params[2];
+            success = IERC20(addresses[2]).transfer(
+                addresses[0],
+                (pYield * shares + params[2])
             );
         } else {
-            _shares = (block.number - t.departure) * t.bagSize;
+            shares = (block.number - params[1]) * params[2];
             success = IERC20(globalToken).transfer(
-                toWho,
-                ((pYield * _shares + t.bagSize) * t.perUnit)
+                addresses[0],
+                ((pYield * shares + params[2]) * params[3])
             );
         }
         return success;
     }
 
-    function _withdrawBuybackToken(Train memory _train, address tOwner)
-        internal
+    function _withdrawBuybackToken(address[3] memory addresses)
+        external
         returns (bool success)
     {
-        IERC20 token = IERC20(_train.meta.buybackToken);
-        uint256 q = lastStation[_train.meta.uniPool].ownedQty;
+        IERC20 token = IERC20(addresses[1]);
+        uint256 q = lastStation[addresses[0]].ownedQty;
         if (q > 0) {
-            success = token.transfer(tOwner, q);
+            success = token.transfer(addresses[2], q);
         }
         if (success) {
             emit TrainConductorWithdrawal(
-                address(token),
-                _train.meta.buybackToken,
+                addresses[1],
+                addresses[0],
+                addresses[2],
                 q
             );
         }
@@ -162,9 +155,14 @@ contract TrainSpotting is ITrainSpotting {
     function _getLastStation(address _train)
         external
         view
-        returns (stationData memory)
+        returns (uint256[4] memory stationD)
     {
-        return lastStation[_train];
+        stationD = [
+            lastStation[_train].at,
+            lastStation[_train].price,
+            lastStation[_train].ownedQty,
+            lastStation[_train].lastGas
+        ];
     }
 
     function _isInStation(uint256 _cycleZero, address _trackAddr)

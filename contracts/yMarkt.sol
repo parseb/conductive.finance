@@ -12,12 +12,12 @@ import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/token/ERC721/ERC721.
 
 import "./UniswapInterfaces.sol";
 import "./ITrainSpotting.sol";
+import "./StructsDataType.sol";
 
 contract Conductive is
     ERC721("conductive.finance", "Train"),
     Ownable,
-    ReentrancyGuard,
-    ITrainSpotting
+    ReentrancyGuard
 {
     uint256 clicker;
     //Ticket[] public allTickets;
@@ -103,7 +103,7 @@ contract Conductive is
     ////////////////////////////////
     ///////  EVENTS
 
-    event FallbackCall(address _sender, bytes _data);
+    event FallbackCall(address _sender);
 
     event TrainCreated(
         address indexed _trainAddress,
@@ -201,13 +201,13 @@ contract Conductive is
 
     /// fallback
     fallback() external {
-        emit FallbackCall(msg.sender, msg.data);
+        emit FallbackCall(msg.sender);
     }
 
     receive() external payable {
         (bool s, ) = payable(owner()).call{value: msg.value}("on purple");
         if (!s) {
-            emit FallbackCall(msg.sender, msg.data);
+            emit FallbackCall(msg.sender);
         }
     }
 
@@ -377,14 +377,13 @@ contract Conductive is
     function trainStation(address _trainAddress) public returns (bool s) {
         uint256 g1 = gasleft();
         require(isInStation(_trainAddress), "Train moving. (Chu, Chu)");
-        stationData memory prevStation = Spotter._getLastStation(_trainAddress);
-        require(prevStation.at != block.number, "Departing");
+        uint256[4] memory prevStation = Spotter._getLastStation(_trainAddress);
+        require(prevStation[0] != block.number, "Departing");
 
         Train memory train = getTrainByPool[_trainAddress];
-        uint256 _price = IUniswapV2Pair(train.meta.uniPool)
-            .price0CumulativeLast();
+        uint256 _price = IUniswapV2Pair(_trainAddress).price0CumulativeLast();
 
-        if (prevStation.lastGas == 0) {
+        if (prevStation[3] == 0) {
             solidRouter.addLiquidity(
                 train.meta.buybackToken,
                 globalToken,
@@ -396,13 +395,23 @@ contract Conductive is
                 block.timestamp
             );
             emit TrainStarted(_trainAddress, train);
-            return Spotter._trainStation(train, _price, g1);
+            return
+                Spotter._trainStation(
+                    [_trainAddress, train.meta.buybackToken],
+                    [
+                        _price,
+                        g1,
+                        train.budget,
+                        train.config.cycleParams[3],
+                        train.config.cycleParams[2]
+                    ]
+                );
         }
 
         solidRouter.removeLiquidity(
             train.meta.buybackToken,
             globalToken,
-            IERC20(train.meta.uniPool).balanceOf(address(this)),
+            IERC20(_trainAddress).balanceOf(address(this)),
             0,
             0,
             address(this),
@@ -411,8 +420,11 @@ contract Conductive is
 
         if (allowConductorWithdrawal[train.meta.uniPool] >= block.number) {
             Spotter._withdrawBuybackToken(
-                train,
-                isTrainOwner[train.meta.uniPool]
+                [
+                    _trainAddress,
+                    train.meta.buybackToken,
+                    isTrainOwner[_trainAddress]
+                ]
             );
             allowConductorWithdrawal[_trainAddress] = 0;
         }
@@ -420,26 +432,50 @@ contract Conductive is
         Ticket[] memory toBurnTickets = offBoardingPrep(
             _trainAddress,
             _price / (10**(18 - train.config.cycleParams[3])),
-            prevStation
+            prevStation[1]
         );
 
         for (uint256 i = 0; i < toBurnTickets.length; i++) {
-            Ticket memory _t = toBurnTickets[i];
-            if (Spotter._offBoard(_t, train, ticketByNftId[_t.nftid][0]))
-                _burn(_t.nftid);
-            delete offBoardingQueue[_trainAddress][i];
+            Ticket memory t = toBurnTickets[i];
+            if (
+                Spotter._offBoard(
+                    [
+                        t.destination,
+                        t.departure,
+                        t.bagSize,
+                        t.perUnit,
+                        train.inCustody,
+                        train.yieldSharesTotal
+                    ],
+                    [
+                        ticketByNftId[t.nftid][0],
+                        ticketByNftId[t.nftid][1],
+                        train.meta.buybackToken
+                    ]
+                )
+            ) {
+                _burn(t.nftid);
+                delete offBoardingQueue[_trainAddress][i];
+            }
         }
 
-        s = Spotter._trainStation(train, _price, g1);
+        s = Spotter._trainStation(
+            [_trainAddress, train.meta.buybackToken],
+            [
+                _price,
+                g1,
+                train.budget,
+                train.config.cycleParams[3],
+                train.config.cycleParams[2]
+            ]
+        );
     }
 
     function offBoardingPrep(
         address _trainAddress,
         uint256 priceNow,
-        stationData memory prevS
+        uint256 lastAtPrice
     ) private returns (Ticket[] memory) {
-        uint256 lastAtPrice = prevS.price;
-
         uint256 x = uint256(priceNow) -
             (uint256(int256(priceNow) - int256(lastAtPrice)));
         if (priceNow > lastAtPrice) x = lastAtPrice;
@@ -724,7 +760,7 @@ contract Conductive is
     {
         return
             getTrainByPool[_trainAddress].config.cycleParams[0] +
-            Spotter._getLastStation(_trainAddress).at;
+            Spotter._getLastStation(_trainAddress)[0];
     }
 
     // function tokenHasVault(address _buybackERC)
