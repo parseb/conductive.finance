@@ -92,7 +92,7 @@ contract Conductive is
     error AlreadyOnThisTrain(address train);
     error NotOnThisTrain(address train);
     error ZeroValuesNotAllowed();
-    error TrainNotFound(address ghostTrain);
+    // error TrainNotFound(address ghostTrain);
     error IssueOnDeposit(uint256 amount, address token);
     error MinDepositRequired(uint256 required, uint256 provided);
     error NotTrainOwnerError(address _train, address _perp);
@@ -141,20 +141,18 @@ contract Conductive is
         uint64[4] _newParams
     );
 
-    event TrainStarted(address _trainAddress, Train _train);
-
     //////  Events
     ////////////////////////////////
 
     ////////////////////////////////
     ////////  MODIFIERS
 
-    modifier ensureTrain(address _train) {
-        if (getTrainByPool[_train].meta.uniPool == address(0)) {
-            revert TrainNotFound(_train);
-        }
-        _;
-    }
+    // modifier ensureTrain(address _train) {
+    //     if (getTrainByPool[_train].meta.uniPool == address(0)) {
+    //         revert TrainNotFound(_train);
+    //     }
+    //     _;
+    // }
 
     /// @dev ensure offboarding nulls ticket / destination
     modifier onlyUnticketed(address _train) {
@@ -200,16 +198,16 @@ contract Conductive is
     //////////////////////////////
 
     /// fallback
-    fallback() external {
-        emit FallbackCall(msg.sender);
-    }
+    // fallback() external {
+    //     emit FallbackCall(msg.sender);
+    // }
 
-    receive() external payable {
-        (bool s, ) = payable(owner()).call{value: msg.value}("on purple");
-        if (!s) {
-            emit FallbackCall(msg.sender);
-        }
-    }
+    // receive() external payable {
+    //     (bool s, ) = payable(owner()).call{value: msg.value}("on purple");
+    //     if (!s) {
+    //         emit FallbackCall(msg.sender);
+    //     }
+    // }
 
     ////////////////////////////////
 
@@ -256,15 +254,16 @@ contract Conductive is
             uniPool = baseFactory.createPair(_buybackToken, globalToken);
         }
 
-        require(uniPool != address(0));
-        //trainAddressVault[uniPool] = IVault(tokenHasVault(_buybackToken));
-        require(getTrainByPool[uniPool].meta.uniPool == address(0), "exists");
+        require(
+            uniPool != address(0) &&
+                getTrainByPool[uniPool].meta.uniPool == address(0)
+        );
 
         if (_initialBudget > 0)
             require(
                 IERC20(globalToken).transferFrom(
                     msg.sender,
-                    address(this),
+                    address(Spotter),
                     _initialBudget
                 )
             );
@@ -286,14 +285,16 @@ contract Conductive is
         isTrainOwner[uniPool] = msg.sender;
         // lastStation[uniPool].at = block.number;
 
-        IERC20(_train.meta.buybackToken).approve(
-            address(solidRouter),
-            type(uint128).max - 1
-        );
-        IERC20(globalToken).approve(
-            address(solidRouter),
-            type(uint128).max - 1
-        );
+        Spotter._approveToken(_buybackToken);
+
+        // IERC20(_train.meta.buybackToken).approve(
+        //     address(solidRouter),
+        //     type(uint128).max - 1
+        // );
+        // IERC20(globalToken).approve(
+        //     address(solidRouter),
+        //     type(uint128).max - 1
+        // );
 
         //allTrains.push(_train);
         emit TrainCreated(uniPool, _buybackToken);
@@ -308,7 +309,6 @@ contract Conductive is
     )
         public
         payable
-        ensureTrain(_trainAddress)
         onlyUnticketed(_trainAddress)
         nonReentrant
         returns (bool success)
@@ -335,7 +335,7 @@ contract Conductive is
 
         bool transfer = IERC20(train.meta.buybackToken).transferFrom(
             msg.sender,
-            address(this),
+            address(Spotter),
             _bagSize
         );
 
@@ -384,17 +384,12 @@ contract Conductive is
         uint256 _price = IUniswapV2Pair(_trainAddress).price0CumulativeLast();
 
         if (prevStation[3] == 0) {
-            solidRouter.addLiquidity(
+            Spotter._addLiquidity(
                 train.meta.buybackToken,
-                globalToken,
                 IERC20(train.meta.buybackToken).balanceOf(address(this)),
-                train.budget,
-                0,
-                0,
-                address(this),
-                block.timestamp
+                train.budget
             );
-            emit TrainStarted(_trainAddress, train);
+
             return
                 Spotter._trainStation(
                     [_trainAddress, train.meta.buybackToken],
@@ -407,16 +402,7 @@ contract Conductive is
                     ]
                 );
         }
-
-        solidRouter.removeLiquidity(
-            train.meta.buybackToken,
-            globalToken,
-            IERC20(_trainAddress).balanceOf(address(this)),
-            0,
-            0,
-            address(this),
-            block.timestamp
-        );
+        Spotter._removeAllLiquidity(train.meta.buybackToken, _trainAddress);
 
         if (allowConductorWithdrawal[train.meta.uniPool] >= block.number) {
             Spotter._withdrawBuybackToken(
@@ -505,13 +491,15 @@ contract Conductive is
         require(!isInStation(_train), "please wait");
         Ticket memory ticket = userTrainTicket[msg.sender][_train];
         require(ticket.bagSize > 0, "Already Burned");
-        require(
-            ticket.departure + 10 < block.number,
-            "doors are still closing"
-        );
+        require(ticket.departure + 10 < block.number, "too soon");
         Train memory train = getTrainByPool[ticket.trainAddress];
-
-        success = tokenOut(ticket.bagSize, train);
+        // uint256 amountOut, uint256 inCustody, address poolAddr, address bToken
+        success = Spotter._tokenOut(
+            ticket.bagSize,
+            train.inCustody,
+            _train,
+            train.meta.buybackToken
+        );
         if (success) {
             _burn(ticket.nftid);
             emit JumpedOut(msg.sender, _train, ticket.nftid);
@@ -573,7 +561,11 @@ contract Conductive is
     {
         require(!isInStation(_trainAddress), "please wait");
         require(
-            IERC20(globalToken).transferFrom(msg.sender, address(this), _amount)
+            IERC20(globalToken).transferFrom(
+                msg.sender,
+                address(Spotter),
+                _amount
+            )
         );
         getTrainByPool[_trainAddress].budget += _amount;
         return true;
@@ -618,44 +610,22 @@ contract Conductive is
     /////////////////////////////////
     ////////  PRIVATE FUNCTIONS
 
-    function tokenOut(uint256 _amount, Train memory train)
-        private
-        returns (bool success)
-    {
-        IERC20 token = IERC20(train.meta.buybackToken);
-        uint256 prev = token.balanceOf(address(this));
-        if (prev >= _amount) success = token.transfer(msg.sender, _amount);
+    // function tokenOut(uint256 _amount, Train memory train)
+    //     private
+    //     returns (bool success)
+    // {
+    //     IERC20 token = IERC20(train.meta.buybackToken);
+    //     uint256 prev = token.balanceOf(address(this));
+    //     if (prev >= _amount) success = token.transfer(msg.sender, _amount);
 
-        if (!success) {
-            uint256 _toBurn = IERC20(train.meta.uniPool).balanceOf(
-                address(this)
-            ) / (train.inCustody / _amount);
+    //     if (!success) {
+    //         uint256 _toBurn = IERC20(train.meta.uniPool).balanceOf(
+    //             address(this)
+    //         ) / (train.inCustody / _amount);
 
-            solidRouter.removeLiquidity(
-                train.meta.buybackToken,
-                globalToken,
-                _toBurn,
-                _amount,
-                0,
-                address(this),
-                block.timestamp
-            );
-
-            success = token.transfer(msg.sender, _amount);
-
-            // solidRouter.addLiquidity(
-            //     address(token),
-            //     train.meta.buybackToken,
-            //     token.balanceOf(address(this)) -
-            //         lastStation[train.meta.uniPool].ownedQty,
-            //     IERC20(globalToken).balanceOf(address(this)) - train.budget,
-            //     0,
-            //     0,
-            //     address(this),
-            //     block.timestamp
-            // );
-        }
-    }
+    //         success = token.transfer(msg.sender, _amount);
+    //     }
+    // }
 
     function isInStation(address _trainAddress) public view returns (bool x) {
         x = Spotter._isInStation(
@@ -753,15 +723,15 @@ contract Conductive is
             );
     }
 
-    function nextStationAt(address _trainAddress)
-        public
-        view
-        returns (uint256)
-    {
-        return
-            getTrainByPool[_trainAddress].config.cycleParams[0] +
-            Spotter._getLastStation(_trainAddress)[0];
-    }
+    // function nextStationAt(address _trainAddress)
+    //     public
+    //     view
+    //     returns (uint256)
+    // {
+    //     return
+    //         getTrainByPool[_trainAddress].config.cycleParams[0] +
+    //         Spotter._getLastStation(_trainAddress)[0];
+    // }
 
     // function tokenHasVault(address _buybackERC)
     //     public

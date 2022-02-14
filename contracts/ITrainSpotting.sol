@@ -23,7 +23,33 @@ interface ITrainSpotting {
         external
         returns (bool);
 
-    function _getLastStation(address _train)
+    function _addLiquidity(
+        address bToken,
+        uint256 bAmout,
+        uint256 dAmout
+    ) external returns (bool);
+
+    function _removeLiquidity(
+        address bToken,
+        uint256 bAmount,
+        uint256 dAmount,
+        uint256 lAmount
+    ) external returns (bool);
+
+    function _removeAllLiquidity(address bToken, address poolAddress)
+        external
+        returns (bool);
+
+    function _tokenOut(
+        uint256 amountOut,
+        uint256 inCustody,
+        address poolAddr,
+        address bToken
+    ) external returns (bool);
+
+    function _approveToken(address bToken) external returns (bool);
+
+    function _getLastStation(address train)
         external
         view
         returns (uint256[4] memory stationD);

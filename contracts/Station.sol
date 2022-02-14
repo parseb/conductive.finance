@@ -29,16 +29,28 @@ contract TrainSpotting {
         if (_reRouter != address(0))
             solidRouter = IUniswapV2Router02(_reRouter);
         if (_denominator != address(0)) globalToken = _denominator;
+
+        IERC20(globalToken).approve(
+            address(solidRouter),
+            type(uint128).max - 1
+        );
+        emit SpottingParamsUpdated(globalToken, centralStation);
+
         return (address(solidRouter), globalToken);
     }
 
     event TrainInStation(address indexed _trainAddress, uint256 _nrstation);
     event TrainStarted(address indexed _trainAddress, stationData _station);
     event TrainConductorWithdrawal(
-        address buybackToken,
-        address trainAddress,
+        address indexed buybackToken,
+        address indexed trainAddress,
         address who,
         uint256 quantity
+    );
+    event TrainStarted(address indexed _trainAddress, Train _train);
+    event SpottingParamsUpdated(
+        address _denominator,
+        address indexed _centralStation
     );
 
     function _trainStation(
@@ -142,14 +154,99 @@ contract TrainSpotting {
         if (q > 0) {
             success = token.transfer(addresses[2], q);
         }
-        if (success) {
+        if (success)
             emit TrainConductorWithdrawal(
                 addresses[1],
                 addresses[0],
                 addresses[2],
                 q
             );
+    }
+
+    function _addLiquidity(
+        address _bToken,
+        uint256 _bAmout,
+        uint256 _dAmout
+    ) external returns (bool) {
+        require(msg.sender == centralStation);
+
+        (, , uint256 liq) = solidRouter.addLiquidity(
+            _bToken,
+            globalToken,
+            _bAmout,
+            _dAmout,
+            0,
+            0,
+            centralStation,
+            block.timestamp
+        );
+        if (liq > 1) return true;
+    }
+
+    function _removeLiquidity(
+        address _bToken,
+        uint256 _bAmount,
+        uint256 _dAmount,
+        uint256 _lAmount
+    ) public returns (bool) {
+        require(msg.sender == centralStation);
+
+        (, uint256 liq) = solidRouter.removeLiquidity(
+            _bToken,
+            globalToken,
+            _lAmount,
+            _bAmount,
+            _dAmount,
+            address(this),
+            block.timestamp
+        );
+        if (liq > 1) return true;
+    }
+
+    function _removeAllLiquidity(address _bToken, address _poolAddress)
+        external
+        returns (bool)
+    {
+        require(msg.sender == centralStation);
+
+        (uint256 a, uint256 b) = solidRouter.removeLiquidity(
+            _bToken,
+            globalToken,
+            IERC20(_poolAddress).balanceOf(address(this)),
+            0,
+            0,
+            address(this),
+            block.timestamp
+        );
+        if (a + b > 2) return true;
+    }
+
+    function _tokenOut(
+        uint256 _amount,
+        uint256 _inCustody,
+        address _poolAddress,
+        address _bToken
+    ) external returns (bool success) {
+        require(msg.sender == centralStation);
+
+        IERC20 token = IERC20(_bToken);
+        uint256 prev = token.balanceOf(address(this));
+        if (prev >= _amount) success = token.transfer(msg.sender, _amount);
+        if (!success) {
+            uint256 _toBurn = IERC20(_poolAddress).balanceOf(address(this)) /
+                (_inCustody / _amount);
+            _removeLiquidity(_bToken, _amount, 0, _toBurn);
+            success = token.transfer(msg.sender, _amount);
         }
+    }
+
+    function _approveToken(address _bToken) external returns (bool success) {
+        require(msg.sender == centralStation);
+
+        success = IERC20(_bToken).approve(
+            address(solidRouter),
+            type(uint128).max - 1
+        );
     }
 
     function _getLastStation(address _train)
