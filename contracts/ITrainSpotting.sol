@@ -40,6 +40,8 @@ interface ITrainSpotting {
         external
         returns (bool);
 
+    function _isInStation(uint256, address) external view returns (bool);
+
     function _tokenOut(
         uint256 amountOut,
         uint256 inCustody,
@@ -49,10 +51,12 @@ interface ITrainSpotting {
 
     function _approveToken(address bToken) external returns (bool);
 
+    function _setCentralStation(address centralStation)
+        external
+        returns (address, address);
+
     function _getLastStation(address train)
         external
         view
         returns (uint256[4] memory stationD);
-
-    function _isInStation(uint256, address) external view returns (bool);
 }

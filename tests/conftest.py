@@ -1,16 +1,22 @@
 import pytest
-from brownie import accounts, Conductive, Contract, chain, convert, rpc
+from brownie import accounts, Conductive, TrainSpotting, Contract, chain, convert, rpc
 from brownie_tokens import MintableForkToken
 import time
 
 
 @pytest.fixture(scope="module")
-def Conductive(Conductive, accounts):
+def TrainS(TrainSpotting, accounts):
     return accounts[8].deploy(
-        Conductive,
-        "0xc35DADB65012eC5796536bD9864eD8773aBc74C4",
+        TrainSpotting,
+        "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
         "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506",
-        "0x8f3cf7ad23cd3cadbd9735aff958023239c6a063",
+    )
+
+
+@pytest.fixture(scope="module")
+def Conductive(Conductive, TrainS, accounts):
+    return accounts[8].deploy(
+        Conductive, "0xc35DADB65012eC5796536bD9864eD8773aBc74C4", TrainS.address
     )
 
 

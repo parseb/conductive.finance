@@ -18,22 +18,26 @@ contract TrainSpotting {
         globalToken = _denominator;
     }
 
+    function _setCentralStation(address _centralStation)
+        external
+        returns (address, address)
+    {
+        require(centralStation == address(0));
+        centralStation = _centralStation;
+        return (address(solidRouter), globalToken);
+    }
+
     function _spottingParams(
         address _denominator,
         address _centralStation,
         address _reRouter
     ) external returns (address, address) {
         require(msg.sender == centralStation || centralStation == address(0));
-        globalToken = _denominator;
+        if (globalToken == address(0)) globalToken = _denominator;
         centralStation = _centralStation;
         if (_reRouter != address(0))
             solidRouter = IUniswapV2Router02(_reRouter);
-        if (_denominator != address(0)) globalToken = _denominator;
 
-        IERC20(globalToken).approve(
-            address(solidRouter),
-            type(uint128).max - 1
-        );
         emit SpottingParamsUpdated(globalToken, centralStation);
 
         return (address(solidRouter), globalToken);

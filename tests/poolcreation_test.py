@@ -72,7 +72,7 @@ def test_creating_train_with_existing_pool_fails(
 
     wFTM.transfer(accounts[0].address, 10 * (10 ** 18), {"from": wFTMrich})
     # "Overriding train not allowed"
-    with reverts("exists"):
+    with reverts("exists or no pool"):
         Conductive.createTrain(
             YFI.address,
             [101, 51, 51, 2],

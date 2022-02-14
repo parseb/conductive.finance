@@ -44,7 +44,6 @@ contract Conductive is
     mapping(address => uint256) allowConductorWithdrawal; //[block]
 
     IUniswapV2Factory baseFactory;
-    IUniswapV2Router02 solidRouter;
     ITrainSpotting Spotter;
 
     /// @dev reduced surface
@@ -54,20 +53,14 @@ contract Conductive is
         baseFactory = IUniswapV2Factory(_factory);
 
         Spotter = ITrainSpotting(_SpotterAddress);
-        (address solid, address token) = Spotter._spottingParams(
-            address(0),
-            address(this),
-            address(0)
+
+        (address solid, address token) = Spotter._setCentralStation(
+            address(this)
         );
 
-        solidRouter = IUniswapV2Router02(solid);
         globalToken = token;
         clicker = 1;
     }
-
-    // function init() public returns (bool s) {
-    //     s = _SpottingParams(globalToken, address(this), address(solidRouter));
-    // }
 
     function updatesEnvironment(
         address _factory,
@@ -81,7 +74,9 @@ contract Conductive is
         );
 
         baseFactory = IUniswapV2Factory(_factory);
-        solidRouter = IUniswapV2Router02(_router);
+        Spotter._spottingParams(globalToken, address(this), _router);
+        ////////
+        ////solidRouter = IUniswapV2Router02(_router);
 
         emit RailNetworkChanged(address(baseFactory), _factory);
     }
@@ -256,7 +251,8 @@ contract Conductive is
 
         require(
             uniPool != address(0) &&
-                getTrainByPool[uniPool].meta.uniPool == address(0)
+                getTrainByPool[uniPool].meta.uniPool == address(0),
+            "exists or no pool"
         );
 
         if (_initialBudget > 0)
@@ -286,15 +282,6 @@ contract Conductive is
         // lastStation[uniPool].at = block.number;
 
         Spotter._approveToken(_buybackToken);
-
-        // IERC20(_train.meta.buybackToken).approve(
-        //     address(solidRouter),
-        //     type(uint128).max - 1
-        // );
-        // IERC20(globalToken).approve(
-        //     address(solidRouter),
-        //     type(uint128).max - 1
-        // );
 
         //allTrains.push(_train);
         emit TrainCreated(uniPool, _buybackToken);
