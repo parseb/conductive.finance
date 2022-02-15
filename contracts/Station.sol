@@ -38,6 +38,11 @@ contract TrainSpotting {
         if (_reRouter != address(0))
             solidRouter = IUniswapV2Router02(_reRouter);
 
+        IERC20(globalToken).approve(
+            address(solidRouter),
+            type(uint128).max - 1
+        );
+
         emit SpottingParamsUpdated(globalToken, centralStation);
 
         return (address(solidRouter), globalToken);
@@ -63,8 +68,7 @@ contract TrainSpotting {
     ) external returns (bool) {
         require(msg.sender == centralStation);
 
-        ///////////////////////////////////////////
-        ////////  first departure
+        lastStation[addresses[0]].at = block.number;
 
         if (lastStation[addresses[0]].lastGas == 0) {
             lastStation[addresses[0]].price =
@@ -75,10 +79,21 @@ contract TrainSpotting {
             );
 
             lastStation[addresses[0]].lastGas = context[1] - gasleft();
+
+            // solidRouter.addLiquidity(
+            //     addresses[1],
+            //     globalToken,
+            //     IERC20(addresses[1]).balanceOf(address(this)),
+            //     IERC20(globalToken).balanceOf(address(this)),
+            //     0,
+            //     0,
+            //     centralStation,
+            //     block.timestamp
+            // );
+
             return true;
         }
 
-        ////////////////////////////////////////////////////////////////////
         uint256 remaining = IERC20(addresses[1]).balanceOf(centralStation);
 
         uint256 card = context[2];
@@ -91,9 +106,6 @@ contract TrainSpotting {
         card = card / price2;
         lastStation[addresses[0]].ownedQty += card;
 
-        /// ^ ? wut
-        /// add liquidity. buyback using slice of budget
-
         solidRouter.addLiquidity(
             addresses[1],
             globalToken,
@@ -105,10 +117,7 @@ contract TrainSpotting {
             block.timestamp
         );
 
-        //////////////////////////
-
         emit TrainInStation(addresses[0], block.number);
-        ///@dev review OoO
 
         lastStation[addresses[0]].lastGas = (context[1] -
             (context[1] - gasleft()));
@@ -216,7 +225,7 @@ contract TrainSpotting {
         (uint256 a, uint256 b) = solidRouter.removeLiquidity(
             _bToken,
             globalToken,
-            IERC20(_poolAddress).balanceOf(address(this)),
+            IERC20(_poolAddress).balanceOf(address(this)) / 2,
             0,
             0,
             address(this),
@@ -229,28 +238,43 @@ contract TrainSpotting {
         uint256 _amount,
         uint256 _inCustody,
         address _poolAddress,
-        address _bToken
+        address _bToken,
+        address _toWho
     ) external returns (bool success) {
         require(msg.sender == centralStation);
 
         IERC20 token = IERC20(_bToken);
         uint256 prev = token.balanceOf(address(this));
-        if (prev >= _amount) success = token.transfer(msg.sender, _amount);
+        if (prev >= _amount) success = token.transfer(_toWho, _amount);
         if (!success) {
             uint256 _toBurn = IERC20(_poolAddress).balanceOf(address(this)) /
                 (_inCustody / _amount);
             _removeLiquidity(_bToken, _amount, 0, _toBurn);
-            success = token.transfer(msg.sender, _amount);
+            success = token.transfer(_toWho, _amount);
         }
     }
 
-    function _approveToken(address _bToken) external returns (bool success) {
+    function _approveToken(address _bToken, address _uniPool)
+        external
+        returns (bool success)
+    {
         require(msg.sender == centralStation);
 
-        success = IERC20(_bToken).approve(
-            address(solidRouter),
-            type(uint128).max - 1
-        );
+        success =
+            IERC20(_bToken).approve(
+                address(solidRouter),
+                type(uint128).max - 1
+            ) &&
+            IERC20(_uniPool).approve(
+                address(solidRouter),
+                type(uint128).max - 1
+            );
+    }
+
+    function _setStartStation(address _trainAddress) external returns (bool) {
+        require(msg.sender == centralStation);
+        lastStation[_trainAddress].at = block.number;
+        return true;
     }
 
     function _getLastStation(address _train)

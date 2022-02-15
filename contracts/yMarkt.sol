@@ -279,13 +279,12 @@ contract Conductive is
 
         getTrainByPool[uniPool] = _train;
         isTrainOwner[uniPool] = msg.sender;
-        // lastStation[uniPool].at = block.number;
 
-        Spotter._approveToken(_buybackToken);
+        Spotter._approveToken(_buybackToken, uniPool);
 
         //allTrains.push(_train);
         emit TrainCreated(uniPool, _buybackToken);
-        successCreated = true;
+        successCreated = Spotter._setStartStation(uniPool);
     }
 
     function createTicket(
@@ -371,12 +370,6 @@ contract Conductive is
         uint256 _price = IUniswapV2Pair(_trainAddress).price0CumulativeLast();
 
         if (prevStation[3] == 0) {
-            Spotter._addLiquidity(
-                train.meta.buybackToken,
-                IERC20(train.meta.buybackToken).balanceOf(address(this)),
-                train.budget
-            );
-
             return
                 Spotter._trainStation(
                     [_trainAddress, train.meta.buybackToken],
@@ -485,7 +478,8 @@ contract Conductive is
             ticket.bagSize,
             train.inCustody,
             _train,
-            train.meta.buybackToken
+            train.meta.buybackToken,
+            msg.sender
         );
         if (success) {
             _burn(ticket.nftid);
@@ -578,13 +572,12 @@ contract Conductive is
             Ticket memory T = getTicketById(tokenId);
 
             userTrainTicket[from][T.trainAddress] = emptyticket;
-            //decrementShares(T.trainAddress, toBurn);
+
             getTrainByPool[T.trainAddress].yieldSharesTotal -=
                 T.bagSize *
                 (T.destination - T.departure);
-            // decrementBag(T.trainAddress, T.bagSize);
+
             getTrainByPool[T.trainAddress].inCustody -= T.bagSize;
-            //decrementPassengers(T.trainAddress);
 
             getTrainByPool[T.trainAddress].passengers -= 1;
             ticketByNftId[T.nftid] = [address(0), address(0)];
@@ -597,71 +590,12 @@ contract Conductive is
     /////////////////////////////////
     ////////  PRIVATE FUNCTIONS
 
-    // function tokenOut(uint256 _amount, Train memory train)
-    //     private
-    //     returns (bool success)
-    // {
-    //     IERC20 token = IERC20(train.meta.buybackToken);
-    //     uint256 prev = token.balanceOf(address(this));
-    //     if (prev >= _amount) success = token.transfer(msg.sender, _amount);
-
-    //     if (!success) {
-    //         uint256 _toBurn = IERC20(train.meta.uniPool).balanceOf(
-    //             address(this)
-    //         ) / (train.inCustody / _amount);
-
-    //         success = token.transfer(msg.sender, _amount);
-    //     }
-    // }
-
     function isInStation(address _trainAddress) public view returns (bool x) {
         x = Spotter._isInStation(
             getTrainByPool[_trainAddress].config.cycleParams[0],
             getTrainByPool[_trainAddress].meta.uniPool
         );
     }
-
-    // function incrementPassengers(address _trainId) private {
-    //     getTrainByPool[_trainId].passengers++;
-    // }
-
-    // function decrementPassengers(address _trainId) private {
-    //     getTrainByPool[_trainId].passengers--;
-    // }
-
-    // function incrementBag(address _trainId, uint256 _bagSize) private {
-    //     getTrainByPool[_trainId].inCustody += _bagSize;
-    // }
-
-    // function decrementBag(address _trainId, uint256 _bagSize) private {
-    //     getTrainByPool[_trainId].inCustody -= _bagSize;
-    // }
-
-    // function decrementShares(address _trainId, uint256 _shares) private {
-    //     getTrainByPool[_trainId].yieldSharesTotal -= _shares;
-    // }
-
-    // function incrementShares(
-    //     address _trainId,
-    //     uint256 _proposedDistance,
-    //     uint256 _bagSize
-    // ) private {
-    //     getTrainByPool[_trainId].yieldSharesTotal +=
-    //         _proposedDistance *
-    //         _bagSize;
-    // }
-
-    // function getTokenPrice(address _trainAddress)
-    //     public
-    //     view
-    //     returns (uint256)
-    // {
-    //     Train memory train = getTrainByPool[_trainAddress];
-    //     uint8 decimals = IERC20Metadata(train.meta.buybackToken).decimals();
-    //     uint256 price = IUniswapV2Pair(train.meta.uniPool)
-    //         .price0CumulativeLast();
-    //     return price / (10**(decimals - uint8(train.config.cycleParams[3])));
-    // }
 
     //////// Private Functions
     /////////////////////////////////
@@ -710,15 +644,15 @@ contract Conductive is
             );
     }
 
-    // function nextStationAt(address _trainAddress)
-    //     public
-    //     view
-    //     returns (uint256)
-    // {
-    //     return
-    //         getTrainByPool[_trainAddress].config.cycleParams[0] +
-    //         Spotter._getLastStation(_trainAddress)[0];
-    // }
+    function nextStationAt(address _trainAddress)
+        public
+        view
+        returns (uint256)
+    {
+        return
+            getTrainByPool[_trainAddress].config.cycleParams[0] +
+            Spotter._getLastStation(_trainAddress)[0];
+    }
 
     // function tokenHasVault(address _buybackERC)
     //     public

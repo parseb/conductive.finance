@@ -24,7 +24,7 @@ def test_create_train_with_0_values_in_configlist_fails(Conductive):
         Conductive.createTrain(
             accounts[5].address,
             [101, 0, 51, 2],
-            1,
+            2,
             10,
             False,
             {"from": accounts[0]},
@@ -41,7 +41,7 @@ def test_train_create_generates_valid_pool_registry(
         assert Conductive.createTrain(
             YFI.address,
             [100, 5, 50, 1],
-            1,
+            2,
             10,
             False,
             {"from": accounts[0]},
@@ -53,7 +53,7 @@ def test_train_create_generates_valid_pool_registry(
         assert Conductive.createTrain(
             YFI.address,
             [100, 5, 50, 1],
-            1,
+            2,
             10,
             False,
             {"from": accounts[0]},
@@ -76,7 +76,7 @@ def test_creating_train_with_existing_pool_fails(
         Conductive.createTrain(
             YFI.address,
             [101, 51, 51, 2],
-            1,
+            2,
             10,
             False,
             {"from": accounts[0]},
@@ -92,7 +92,7 @@ def test_fails_on_per_price_too_low(Conductive, YFIwFTM, YFI, YFIrich):
             1121,  # stations / cycles until vested
             2334,  # per unit / compensate at price
             YFIwFTM,  # pool / train address
-            11,  #  nr of tokens / bag size
+            1,  #  nr of tokens / bag size
             {"from": accounts[1]},
         )
 
@@ -121,16 +121,16 @@ def test_create_ticket(Conductive, wFTM, YFI, YFIwFTM, YFIrich):
     assert chain.height == getTicket[1] + 1
 
 
-def test_burns_ticket_strightforward(Conductive, YFIwFTM, YFI):
+def test_burns_ticket_strightforward(Conductive, TrainS, YFIwFTM, YFI):
     ticket = Conductive.getTicket(accounts[1], YFIwFTM)
     chain.mine(11)  # fails on less than 10
     prev_balance = YFI.balanceOf(accounts[1])
-    prev_contract_balance = YFI.balanceOf(Conductive.address)
+    prev_contract_balance = YFI.balanceOf(TrainS.address)
 
     assert Conductive.burnTicket(YFIwFTM, {"from": accounts[1]})
 
     after_balance = YFI.balanceOf(accounts[1])
-    after_contract_balance = YFI.balanceOf(Conductive.address)
+    after_contract_balance = YFI.balanceOf(TrainS.address)
 
     assert after_balance == prev_balance + ticket[2]
     assert after_contract_balance >= prev_contract_balance - ticket[2]
@@ -142,7 +142,7 @@ def test_burns_ticket_strightforward(Conductive, YFIwFTM, YFI):
 
 
 def test_burns_ticket_after_station_cycle(
-    Conductive, YFIwFTM, YFI, wFTM, solidRegistry, solidSwap, wFTMrich, YFIrich
+    Conductive, TrainS, YFIwFTM, YFI, wFTM, solidRegistry, solidSwap, wFTMrich, YFIrich
 ):
     assert Conductive.createTicket(
         100,

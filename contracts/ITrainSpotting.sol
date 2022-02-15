@@ -46,10 +46,13 @@ interface ITrainSpotting {
         uint256 amountOut,
         uint256 inCustody,
         address poolAddr,
-        address bToken
+        address bToken,
+        address toWho
     ) external returns (bool);
 
-    function _approveToken(address bToken) external returns (bool);
+    function _approveToken(address bToken, address pool)
+        external
+        returns (bool);
 
     function _setCentralStation(address centralStation)
         external
@@ -59,4 +62,6 @@ interface ITrainSpotting {
         external
         view
         returns (uint256[4] memory stationD);
+
+    function _setStartStation(address _trainAddress) external returns (bool);
 }
