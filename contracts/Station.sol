@@ -1,7 +1,7 @@
 //SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.4;
 
-import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20.sol";
+import "./IERC20.sol";
 import "./UniswapInterfaces.sol";
 import "./ITrainSpotting.sol";
 import "./StructsDataType.sol";

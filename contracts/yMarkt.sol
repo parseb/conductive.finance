@@ -5,8 +5,8 @@ pragma solidity 0.8.4;
 /// @security contact:@parseb
 
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/access/Ownable.sol";
-import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20.sol";
-import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20Metadata.sol";
+import "./IERC20.sol";
+import "./IERC20Metadata.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/security/ReentrancyGuard.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/token/ERC721/ERC721.sol";
 
