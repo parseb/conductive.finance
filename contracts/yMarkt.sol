@@ -73,6 +73,7 @@ contract Conductive is
                 _gDenom != address(0)
         );
 
+        globalToken = _gDenom;
         baseFactory = IUniswapV2Factory(_factory);
         Spotter._spottingParams(globalToken, address(this), _router);
         ////////
@@ -242,7 +243,7 @@ contract Conductive is
         bool _levers
     ) public zeroNotAllowed(_cycleParams) returns (bool successCreated) {
         require(_cycleParams[0] > 10); //@dev mincycle hardcoded for jump
-        require(_cycleParams[2] > 1 && _cycleParams[2] < 100);
+        require((_cycleParams[2] > 1) && (_cycleParams[2] < 100));
 
         address uniPool = baseFactory.getPair(_buybackToken, globalToken);
         if (uniPool == address(0)) {
@@ -257,11 +258,13 @@ contract Conductive is
 
         if (_initialBudget > 0)
             require(
-                IERC20(globalToken).transferFrom(
+                Spotter._willTransferFrom(
                     msg.sender,
                     address(Spotter),
+                    globalToken,
                     _initialBudget
-                )
+                ),
+                "budget deposit failed"
             );
 
         Train memory _train = Train({
@@ -292,13 +295,7 @@ contract Conductive is
         uint256 _perUnit, // target price
         address _trainAddress, // train address
         uint256 _bagSize // nr of tokens
-    )
-        public
-        payable
-        onlyUnticketed(_trainAddress)
-        nonReentrant
-        returns (bool success)
-    {
+    ) public onlyUnticketed(_trainAddress) nonReentrant returns (bool success) {
         require(!isInStation(_trainAddress), "wait");
         if (
             _stations == 0 ||
@@ -319,19 +316,25 @@ contract Conductive is
         if (_bagSize < train.config.minBagSize)
             revert MinDepositRequired(train.config.minBagSize, _bagSize);
 
-        bool transfer = IERC20(train.meta.buybackToken).transferFrom(
+        bool transfer = Spotter._willTransferFrom(
             msg.sender,
             address(Spotter),
+            train.meta.buybackToken,
             _bagSize
         );
+
+        // bool transfer = IERC20(train.meta.buybackToken).transfer(
+        //     address(Spotter),
+        //     _bagSize
+        // );
 
         if (!transfer)
             revert IssueOnDeposit(_bagSize, address(train.meta.buybackToken));
 
         Ticket memory ticket = Ticket({
-            destination: (_stations * train.config.cycleParams[0]) +
-                uint64(block.number),
-            departure: uint64(block.number),
+            destination: uint256(_stations * train.config.cycleParams[0]) +
+                block.number,
+            departure: block.number,
             bagSize: _bagSize,
             perUnit: _perUnit,
             trainAddress: _trainAddress,
@@ -382,6 +385,7 @@ contract Conductive is
                     ]
                 );
         }
+
         Spotter._removeAllLiquidity(train.meta.buybackToken, _trainAddress);
 
         if (allowConductorWithdrawal[train.meta.uniPool] >= block.number) {
@@ -542,11 +546,13 @@ contract Conductive is
     {
         require(!isInStation(_trainAddress), "please wait");
         require(
-            IERC20(globalToken).transferFrom(
+            Spotter._willTransferFrom(
                 msg.sender,
                 address(Spotter),
+                globalToken,
                 _amount
-            )
+            ),
+            "deposit failed"
         );
         getTrainByPool[_trainAddress].budget += _amount;
         return true;
@@ -593,7 +599,7 @@ contract Conductive is
     function isInStation(address _trainAddress) public view returns (bool x) {
         x = Spotter._isInStation(
             getTrainByPool[_trainAddress].config.cycleParams[0],
-            getTrainByPool[_trainAddress].meta.uniPool
+            _trainAddress
         );
     }
 

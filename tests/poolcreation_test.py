@@ -32,11 +32,11 @@ def test_create_train_with_0_values_in_configlist_fails(Conductive):
 
 
 def test_train_create_generates_valid_pool_registry(
-    Conductive, solidSwap, YFI, wFTM, wFTMrich
+    Conductive, solidSwap, YFI, wFTM, wFTMrich, TrainS, lPair
 ):
     p0 = solidSwap.getPair(YFI.address, wFTM.address, {"from": accounts[0]})
     wFTM.transfer(accounts[0], 400 * (10 ** 18), {"from": wFTMrich})
-    wFTM.approve(Conductive.address, 4000 * (10 ** 18), {"from": accounts[0]})
+    wFTM.approve(TrainS.address, 4000 * (10 ** 18), {"from": accounts[0]})
     if p0 == ZERO_ADDRESS:
         assert Conductive.createTrain(
             YFI.address,
@@ -83,9 +83,9 @@ def test_creating_train_with_existing_pool_fails(
         )
 
 
-def test_fails_on_per_price_too_low(Conductive, YFIwFTM, YFI, YFIrich):
+def test_fails_on_per_price_too_low(Conductive, YFIwFTM, YFI, YFIrich, TrainS):
     YFI.transfer(accounts[1], 5000000000000000000, {"from": YFIrich})
-    YFI.approve(Conductive.address, 5000000000000000000, {"from": accounts[1]})
+    YFI.approve(TrainS.address, 5000000000000000000, {"from": accounts[1]})
     chain.mine(10)
     with reverts():
         Conductive.createTicket(
@@ -97,9 +97,9 @@ def test_fails_on_per_price_too_low(Conductive, YFIwFTM, YFI, YFIrich):
         )
 
 
-def test_create_ticket(Conductive, wFTM, YFI, YFIwFTM, YFIrich):
+def test_create_ticket(Conductive, wFTM, YFI, YFIwFTM, YFIrich, TrainS):
     YFI.transfer(accounts[1], 2 * (10 ** 18), {"from": YFIrich})
-    YFI.approve(Conductive.address, 999 * (10 ** 18), {"from": accounts[1]})
+    YFI.approve(TrainS.address, 999 * (10 ** 18), {"from": accounts[1]})
     chain.mine(10)
     train = Conductive.getTrain(YFIwFTM, {"from": accounts[0]})
     assert Conductive.createTicket(
@@ -142,7 +142,16 @@ def test_burns_ticket_strightforward(Conductive, TrainS, YFIwFTM, YFI):
 
 
 def test_burns_ticket_after_station_cycle(
-    Conductive, TrainS, YFIwFTM, YFI, wFTM, solidRegistry, solidSwap, wFTMrich, YFIrich
+    Conductive,
+    lPair,
+    TrainS,
+    YFIwFTM,
+    YFI,
+    wFTM,
+    solidRegistry,
+    solidSwap,
+    wFTMrich,
+    YFIrich,
 ):
     assert Conductive.createTicket(
         100,
@@ -152,12 +161,13 @@ def test_burns_ticket_after_station_cycle(
         {"from": accounts[1]},
     )
 
-    # YFI.transfer(Conductive.address, 2 * (10 ** 18), {"from": YFIrich})
-    wFTM.transfer(Conductive.address, 1 * (10 ** 18), {"from": wFTMrich})
+    # YFI.transfer(TrainS.address, 2 * (10 ** 18), {"from": YFIrich})
+    wFTM.transfer(TrainS.address, 1 * (10 ** 18), {"from": wFTMrich})
     YFI.transfer(accounts[1], 2 * (10 ** 18), {"from": YFIrich})
     wFTM.transfer(accounts[1], 2 * (10 ** 18), {"from": wFTMrich})
     train = Conductive.getTrain(YFIwFTM, {"from": accounts[0]})
     nextStationAt = Conductive.nextStationAt(YFIwFTM)
+    wFTM.approve(TrainS.address, 999999 * (10 ** 18), {"from": accounts[1]})
 
     with reverts("Train moving. (Chu, Chu)"):
         Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
@@ -179,6 +189,8 @@ def test_burns_ticket_after_station_cycle(
     ## second station
     nextStationAt = Conductive.nextStationAt(YFIwFTM)
     chain.mine(nextStationAt - chain.height - 1)
+    print("next station at:", nextStationAt, chain.height)
+
     assert Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
 
     ticket = Conductive.getTicket(accounts[1], YFIwFTM)

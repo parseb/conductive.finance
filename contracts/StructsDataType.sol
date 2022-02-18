@@ -29,8 +29,8 @@ struct Train {
 }
 
 struct Ticket {
-    uint128 destination; //promises to travel to block
-    uint128 departure; //created on block
+    uint256 destination; //promises to travel to block
+    uint256 departure; //created on block
     uint256 bagSize; //amount token
     uint256 perUnit; //buyout price
     address trainAddress; //train ID (pair pool)

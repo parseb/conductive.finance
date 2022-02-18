@@ -54,6 +54,13 @@ interface ITrainSpotting {
         external
         returns (bool);
 
+    function _willTransferFrom(
+        address from,
+        address to,
+        address token,
+        uint256 value
+    ) external returns (bool);
+
     function _setCentralStation(address centralStation)
         external
         returns (address, address);

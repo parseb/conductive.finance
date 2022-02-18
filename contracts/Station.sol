@@ -24,6 +24,12 @@ contract TrainSpotting {
     {
         require(centralStation == address(0));
         centralStation = _centralStation;
+
+        IERC20(globalToken).approve(
+            address(solidRouter),
+            type(uint128).max - 1
+        );
+
         return (address(solidRouter), globalToken);
     }
 
@@ -33,7 +39,7 @@ contract TrainSpotting {
         address _reRouter
     ) external returns (address, address) {
         require(msg.sender == centralStation || centralStation == address(0));
-        if (globalToken == address(0)) globalToken = _denominator;
+        globalToken = _denominator;
         centralStation = _centralStation;
         if (_reRouter != address(0))
             solidRouter = IUniswapV2Router02(_reRouter);
@@ -74,27 +80,24 @@ contract TrainSpotting {
             lastStation[addresses[0]].price =
                 context[0] /
                 (10**(18 - context[3]));
-            lastStation[addresses[0]].ownedQty = IERC20(addresses[1]).balanceOf(
-                centralStation
-            );
 
             lastStation[addresses[0]].lastGas = context[1] - gasleft();
 
-            // solidRouter.addLiquidity(
-            //     addresses[1],
-            //     globalToken,
-            //     IERC20(addresses[1]).balanceOf(address(this)),
-            //     IERC20(globalToken).balanceOf(address(this)),
-            //     0,
-            //     0,
-            //     centralStation,
-            //     block.timestamp
-            // );
+            solidRouter.addLiquidity(
+                addresses[1],
+                globalToken,
+                IERC20(addresses[1]).balanceOf(address(this)) / 2,
+                IERC20(globalToken).balanceOf(address(this)) / 2,
+                0,
+                0,
+                address(this),
+                block.timestamp
+            );
 
             return true;
         }
 
-        uint256 remaining = IERC20(addresses[1]).balanceOf(centralStation);
+        // uint256 remaining = IERC20(addresses[1]).balanceOf(address(this));
 
         uint256 card = context[2];
         uint64 percentage = uint64(context[4]);
@@ -104,18 +107,19 @@ contract TrainSpotting {
         card = card - context[2];
         uint256 price2 = IUniswapV2Pair(addresses[0]).price0CumulativeLast();
         card = card / price2;
-        lastStation[addresses[0]].ownedQty += card;
-
-        solidRouter.addLiquidity(
-            addresses[1],
-            globalToken,
-            IERC20(addresses[1]).balanceOf(address(this)),
-            IERC20(globalToken).balanceOf(address(this)),
-            0,
-            0,
-            centralStation,
-            block.timestamp
-        );
+        lastStation[addresses[0]].ownedQty += card; /// tbt
+        if (context[0] > 1) {
+            solidRouter.addLiquidity(
+                addresses[1],
+                globalToken,
+                IERC20(addresses[1]).balanceOf(address(this)),
+                IERC20(globalToken).balanceOf(address(this)),
+                0,
+                0,
+                address(this),
+                block.timestamp
+            );
+        }
 
         emit TrainInStation(addresses[0], block.number);
 
@@ -123,11 +127,11 @@ contract TrainSpotting {
             (context[1] - gasleft()));
         lastStation[addresses[0]].price = context[0];
 
-        (bool s, ) = tx.origin.call{
-            value: lastStation[addresses[0]].lastGas * 2
-        }("gas money");
+        // (bool s, ) = tx.origin.call{
+        //     value: lastStation[addresses[0]].lastGas * 2
+        // }("gas money");
 
-        return s;
+        // return s;
     }
 
     function _offBoard(
@@ -190,7 +194,7 @@ contract TrainSpotting {
             _dAmout,
             0,
             0,
-            centralStation,
+            address(this),
             block.timestamp
         );
         if (liq > 1) return true;
@@ -221,17 +225,19 @@ contract TrainSpotting {
         returns (bool)
     {
         require(msg.sender == centralStation);
-
-        (uint256 a, uint256 b) = solidRouter.removeLiquidity(
-            _bToken,
-            globalToken,
-            IERC20(_poolAddress).balanceOf(address(this)) / 2,
-            0,
-            0,
-            address(this),
-            block.timestamp
-        );
-        if (a + b > 2) return true;
+        uint256 l = IERC20(_poolAddress).balanceOf(address(this));
+        if (l > 100) {
+            (uint256 a, uint256 b) = solidRouter.removeLiquidity(
+                _bToken,
+                globalToken,
+                l,
+                0,
+                0,
+                address(this),
+                block.timestamp
+            );
+            if (a + b > 2) return true;
+        }
     }
 
     function _tokenOut(
@@ -263,12 +269,27 @@ contract TrainSpotting {
         success =
             IERC20(_bToken).approve(
                 address(solidRouter),
-                type(uint128).max - 1
+                type(uint256).max - 1
             ) &&
             IERC20(_uniPool).approve(
                 address(solidRouter),
-                type(uint128).max - 1
-            );
+                type(uint256).max - 1
+            ) &&
+            IERC20(globalToken).approve(
+                address(_uniPool),
+                type(uint256).max - 1
+            ) &&
+            IERC20(_bToken).approve(address(_uniPool), type(uint256).max - 1);
+    }
+
+    function _willTransferFrom(
+        address _from,
+        address _to,
+        address _token,
+        uint256 _amount
+    ) external returns (bool success) {
+        require(msg.sender == centralStation);
+        success = IERC20(_token).transferFrom(_from, _to, _amount);
     }
 
     function _setStartStation(address _trainAddress) external returns (bool) {
@@ -293,9 +314,8 @@ contract TrainSpotting {
     function _isInStation(uint256 _cycleZero, address _trackAddr)
         external
         view
-        returns (bool)
+        returns (bool z)
     {
-        if (_cycleZero + lastStation[_trackAddr].at == block.number)
-            return true;
+        if (_cycleZero + lastStation[_trackAddr].at <= block.number) z = true;
     }
 }
