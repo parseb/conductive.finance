@@ -5,10 +5,10 @@ pragma solidity 0.8.4;
 /// @security contact:@parseb
 
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/access/Ownable.sol";
-import "./IERC20.sol";
-import "./IERC20Metadata.sol";
+import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20Metadata.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/security/ReentrancyGuard.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/token/ERC721/ERC721.sol";
+import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20.sol";
 
 import "./UniswapInterfaces.sol";
 import "./ITrainSpotting.sol";
@@ -20,8 +20,8 @@ contract Conductive is
     ReentrancyGuard
 {
     uint256 clicker;
-    //Ticket[] public allTickets;
-    //Train[] public allTrains;
+    Ticket[] public allTickets;
+    Train[] public allTrains;
 
     mapping(address => Ticket[]) public offBoardingQueue;
 
@@ -54,9 +54,7 @@ contract Conductive is
 
         Spotter = ITrainSpotting(_SpotterAddress);
 
-        (address solid, address token) = Spotter._setCentralStation(
-            address(this)
-        );
+        (, address token) = Spotter._setCentralStation(address(this));
 
         globalToken = token;
         clicker = 1;
@@ -363,6 +361,15 @@ contract Conductive is
     }
 
     /// tear gas war
+
+    ///- -  - reprice
+    // store price0CumulativeLast() and the respective timestamp at this time (block.timestamp)
+    // wait 24 hours
+    // compute the 24h-average price as (price0CumulativeLast() - price0CumulativeOld) / (block.timestamp - timestampOld)
+    ///- -  -
+
+    //
+
     function trainStation(address _trainAddress) public returns (bool s) {
         uint256 g1 = gasleft();
         require(isInStation(_trainAddress), "Train moving. (Chu, Chu)");

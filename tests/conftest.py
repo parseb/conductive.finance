@@ -1,16 +1,37 @@
 import pytest
-from brownie import accounts, Conductive, TrainSpotting, Contract, chain, convert, rpc
+from brownie import (
+    accounts,
+    ValueConduct,
+    Conductive,
+    TrainSpotting,
+    Contract,
+    chain,
+    convert,
+    rpc,
+)
 from brownie_tokens import MintableForkToken
 import time
 
 
 @pytest.fixture(scope="module")
-def TrainS(TrainSpotting, accounts):
-    return accounts[8].deploy(
+def VC(accounts):
+    vc = accounts[8].deploy(ValueConduct)
+    vc.transfer(
+        accounts[0], vc.balanceOf(accounts[8].address) / 100, {"from": accounts[8]}
+    )
+    return vc
+
+
+@pytest.fixture(scope="module")
+def TrainS(TrainSpotting, accounts, VC):
+    ts = accounts[8].deploy(
         TrainSpotting,
-        "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
+        VC.address,
         "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506",
     )
+    VC.transfer(ts.address, VC.balanceOf(accounts[8]), {"from": accounts[8]})
+    VC.renounceOwnership({"from": accounts[8]})
+    return ts
 
 
 @pytest.fixture(scope="module")
@@ -58,15 +79,15 @@ def YFIrich():
 
 
 @pytest.fixture(scope="module")
-def wFTM(Conductive):
-    wftm = MintableForkToken("0x8f3cf7ad23cd3cadbd9735aff958023239c6a063")
-    return wftm
+def wFTM(Conductive, VC):
+    # wftm = MintableForkToken("0x8f3cf7ad23cd3cadbd9735aff958023239c6a063")
+    return VC
 
 
 @pytest.fixture(scope="module")
 def wFTMrich(wFTM):
-    wFTM.transfer(accounts[0], 1000 * (10 ** 18), {"from": accounts[-1]})
-    return accounts[-1]
+    # wFTM.transfer(accounts[0], 1000 * (10 ** 18), {"from": accounts[-1]})
+    return accounts[0]
 
 
 @pytest.fixture(scope="module")
@@ -82,8 +103,8 @@ def YFIwFTM(wFTM, YFI, solidSwap):
     return pair
 
 
-@pytest.fixture(scope="module")
-def lPair(YFIwFTM):
-    pair = Contract.from_explorer(YFIwFTM)
-    pair.set_alias("lPair")
-    yield pair
+# @pytest.fixture(scope="module")
+# def lPair(YFIwFTM):
+#     pair = Contract.from_explorer(YFIwFTM)
+#     pair.set_alias("lPair")
+#     yield pair
