@@ -11,7 +11,7 @@ interface ITrainSpotting {
 
     function _trainStation(
         address[2] memory addresses,
-        uint256[3] memory context
+        uint256[2] memory context
     ) external returns (bool);
 
     function _offBoard(uint256[6] memory params, address[3] memory addresses)
@@ -64,6 +64,10 @@ interface ITrainSpotting {
     function _setCentralStation(address centralStation)
         external
         returns (address, address);
+
+    function _initL(address yourToken, uint256[2] memory ammounts)
+        external
+        returns (bool);
 
     function _getLastStation(address train)
         external

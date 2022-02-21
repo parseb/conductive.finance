@@ -67,21 +67,22 @@ contract TrainSpotting {
 
     function _trainStation(
         address[2] memory addresses,
-        uint256[5] memory context
+        uint256[2] memory context
     ) external returns (bool) {
         require(msg.sender == centralStation);
 
-        lastStation[addresses[0]].at = block.number;
+        lastStation[addresses[1]].at = block.number;
 
-        if (lastStation[addresses[0]].lastGas == 0) {
-            lastStation[addresses[0]].price = context[0];
+        if (lastStation[addresses[1]].lastGas == 0) {
+            lastStation[addresses[1]].price = context[0];
 
-            lastStation[addresses[0]].lastGas = context[1] - gasleft();
-
+            lastStation[addresses[1]].lastGas = context[1] - gasleft();
+            if (IERC20(addresses[0]).balanceOf(address(this)) > 0)
+                lastStation[addresses[1]].lastGas = 0;
             solidRouter.addLiquidity(
-                addresses[1],
+                addresses[0],
                 globalToken,
-                IERC20(addresses[1]).balanceOf(address(this)) / 2,
+                IERC20(addresses[0]).balanceOf(address(this)) / 2,
                 IERC20(globalToken).balanceOf(address(this)) / 2,
                 0,
                 0,
@@ -92,87 +93,52 @@ contract TrainSpotting {
             return true;
         }
 
-        // uint256 remaining = IERC20(addresses[1]).balanceOf(address(this));
+        emit TrainInStation(addresses[1], block.number);
 
-        uint256 card = context[2];
-        uint64 percentage = uint64(context[4]);
-        if (context[2] > 0)
-            context[2] = context[2] - ((percentage * context[2]) / 100);
-
-        card = card - context[2];
-        uint256 price2 = IUniswapV2Pair(addresses[0]).price0CumulativeLast();
-        card = card / price2;
-        lastStation[addresses[0]].ownedQty += card; /// tbt
-        if (context[0] > 1) {
-            solidRouter.addLiquidity(
-                addresses[1],
-                globalToken,
-                IERC20(addresses[1]).balanceOf(address(this)),
-                IERC20(globalToken).balanceOf(address(this)),
-                0,
-                0,
-                address(this),
-                block.timestamp
-            );
-        }
-
-        emit TrainInStation(addresses[0], block.number);
-
-        lastStation[addresses[0]].lastGas = (context[1] -
+        lastStation[addresses[1]].lastGas = (context[1] -
             (context[1] - gasleft()));
-        lastStation[addresses[0]].price = context[0];
-
-        // (bool s, ) = tx.origin.call{
-        //     value: lastStation[addresses[0]].lastGas * 2
-        // }("gas money");
-
-        // return s;
+        lastStation[addresses[1]].price = context[0];
     }
 
     function _offBoard(
         uint256[6] memory params, ///[t.destination, t.departure, t.bagSize, t.perUnit, inCustody, yieldSharesTotal]
-        address[3] memory addresses ///toWho, trainAddress, bToken
+        address[3] memory addr ///toWho, trainAddress, bToken
     ) external returns (bool success) {
         require(msg.sender == centralStation);
 
         uint256 shares;
         //@dev sharevalue degradation incentivises predictability
-        uint256 pYield = (IERC20(addresses[2]).balanceOf(centralStation) -
+        uint256 pYield = (IERC20(addr[2]).balanceOf(centralStation) -
             params[4] -
-            lastStation[addresses[2]].ownedQty) / params[5];
+            lastStation[addr[2]].ownedQty) / params[5];
 
         if (params[0] < block.number) {
             shares = (params[0] - params[1]) * params[2];
-            success = IERC20(addresses[2]).transfer(
-                addresses[0],
+            success = IERC20(addr[2]).transfer(
+                addr[0],
                 (pYield * shares + params[2])
             );
         } else {
             shares = (block.number - params[1]) * params[2];
             success = IERC20(globalToken).transfer(
-                addresses[0],
+                addr[0],
                 ((pYield * shares + params[2]) * params[3])
             );
         }
         return success;
     }
 
-    function _withdrawBuybackToken(address[3] memory addresses)
+    function _withdrawBuybackToken(address[3] memory addres)
         external
         returns (bool success)
     {
-        IERC20 token = IERC20(addresses[1]);
-        uint256 q = lastStation[addresses[0]].ownedQty;
+        IERC20 token = IERC20(addres[1]);
+        uint256 q = lastStation[addres[0]].ownedQty;
         if (q > 0) {
-            success = token.transfer(addresses[2], q);
+            success = token.transfer(addres[2], q);
         }
         if (success)
-            emit TrainConductorWithdrawal(
-                addresses[1],
-                addresses[0],
-                addresses[2],
-                q
-            );
+            emit TrainConductorWithdrawal(addres[1], addres[0], addres[2], q);
     }
 
     function _addLiquidity(
@@ -209,6 +175,25 @@ contract TrainSpotting {
             _lAmount,
             _bAmount,
             _dAmount,
+            address(this),
+            block.timestamp
+        );
+        if (liq > 1) return true;
+    }
+
+    function _initL(address _yourToken, uint256[2] memory _ammounts)
+        external
+        returns (bool)
+    {
+        require(msg.sender == centralStation);
+
+        (, , uint256 liq) = solidRouter.addLiquidity(
+            _yourToken,
+            globalToken,
+            _ammounts[0],
+            _ammounts[1],
+            _ammounts[0],
+            _ammounts[1],
             address(this),
             block.timestamp
         );

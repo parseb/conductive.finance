@@ -18,19 +18,6 @@ from brownie_tokens import MintableForkToken
 from tests.conftest import YFIrich, wFTMrich
 
 
-def test_create_train_with_0_values_in_configlist_fails(Conductive):
-    # "Zero values not allowed in config list"
-    with reverts():
-        Conductive.createTrain(
-            accounts[5].address,
-            [1338, 3],
-            2,
-            10,
-            False,
-            {"from": accounts[0]},
-        )
-
-
 def test_train_create_generates_valid_pool_registry(
     Conductive, solidSwap, YFI, wFTM, wFTMrich, TrainS
 ):
@@ -42,7 +29,7 @@ def test_train_create_generates_valid_pool_registry(
             YFI.address,
             [1338, 3],
             2,
-            10,
+            [0, 0],
             False,
             {"from": accounts[0]},
         )  # returns True
@@ -54,7 +41,7 @@ def test_train_create_generates_valid_pool_registry(
             YFI.address,
             [1338, 3],
             2,
-            10,
+            [0, 0],
             False,
             {"from": accounts[0]},
         )
@@ -77,7 +64,7 @@ def test_creating_train_with_existing_pool_fails(
             YFI.address,
             [1338, 51],
             2,
-            10,
+            [0, 0],
             False,
             {"from": accounts[0]},
         )

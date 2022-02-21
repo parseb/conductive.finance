@@ -22,7 +22,6 @@ struct configdata {
 struct Train {
     address[2] tokenAndPool; //token and pool contract address
     uint256 yieldSharesTotal; //total quantity of pool shares
-    uint256 budget; //total budget for buybacks
     uint256 inCustody; //total token in custody (! separate from stationData.ownedQty)
     uint64 passengers; //number of active tickets/passangers
     configdata config; //configdata

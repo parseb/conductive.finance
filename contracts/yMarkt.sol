@@ -15,7 +15,7 @@ import "./ITrainSpotting.sol";
 import "./StructsDataType.sol";
 
 contract Conductive is
-    ERC721("conductive.finance", "Train"),
+    ERC721("conductive.finance", "Train Ticket"),
     Ownable,
     ReentrancyGuard
 {
@@ -123,7 +123,6 @@ contract Conductive is
     );
 
     event TrainConductorBeingWeird(
-        uint256 quantity,
         address indexed train,
         address indexed conductor
     );
@@ -218,7 +217,7 @@ contract Conductive is
         if (train.config.controlledSpeed) {
             train.config.cycleParams = _newParams;
             getTrainByPool[_trainAddress] = train;
-
+            allowConductorWithdrawal[_trainAddress] = 0;
             emit TrainParamsChanged(_trainAddress, _newParams);
             return true;
         } else {
@@ -236,14 +235,20 @@ contract Conductive is
         address _yourToken,
         uint64[2] memory _cycleParams,
         uint256 _minBagSize,
-        uint256 _initialBudget,
+        uint256[2] memory _initLiqiudity,
         bool _levers
-    ) public returns (bool successCreated) {
+    ) public nonReentrant returns (bool successCreated) {
         require((_cycleParams[0] > 1337) && (_cycleParams[1] > 2)); //min stations/day ticket
 
         address uniPool = baseFactory.getPair(_yourToken, globalToken);
-        if (uniPool == address(0))
+        if (uniPool == address(0)) {
             uniPool = baseFactory.createPair(_yourToken, globalToken);
+            if (_initLiqiudity[0] + _initLiqiudity[1] > 2)
+                require(
+                    Spotter._initL(_yourToken, _initLiqiudity),
+                    "liquidity not added"
+                );
+        }
 
         require(
             uniPool != address(0) &&
@@ -251,22 +256,10 @@ contract Conductive is
             "exists or no pool"
         );
 
-        if (_initialBudget > 0)
-            require(
-                Spotter._willTransferFrom(
-                    msg.sender,
-                    address(Spotter),
-                    globalToken,
-                    _initialBudget
-                ),
-                "budget deposit failed"
-            );
-
         Train memory _train = Train({
             tokenAndPool: [_yourToken, uniPool],
             yieldSharesTotal: 0,
             passengers: 0,
-            budget: _initialBudget,
             inCustody: 0,
             config: configdata({
                 cycleParams: _cycleParams,
@@ -280,7 +273,7 @@ contract Conductive is
 
         Spotter._approveToken(_yourToken, uniPool);
 
-        //allTrains.push(_train);
+        allTrains.push(_train);
         emit TrainCreated(uniPool, _yourToken);
         successCreated = Spotter._setStartStation(uniPool);
     }
@@ -290,7 +283,7 @@ contract Conductive is
         uint256 _perUnit, // target price
         address _trainAddress, // train address
         uint256 _bagSize // nr of tokens
-    ) public onlyUnticketed(_trainAddress) nonReentrant returns (bool success) {
+    ) public nonReentrant onlyUnticketed(_trainAddress) returns (bool success) {
         //require(!isInStation(_trainAddress), "wait");
         if (
             _stations == 0 ||
@@ -300,9 +293,6 @@ contract Conductive is
         ) {
             revert ZeroValuesNotAllowed();
         }
-
-        // if (ticketFromPrice[_trainAddress][_perUnit].bagSize != 0)
-        //     revert PriceNotUnique(_trainAddress, _perUnit);
 
         Train memory train = getTrainByPool[_trainAddress];
 
@@ -315,11 +305,6 @@ contract Conductive is
             train.tokenAndPool[0],
             _bagSize
         );
-
-        // bool transfer = IERC20(train.tokenAndPool[0]).transfer(
-        //     address(Spotter),
-        //     _bagSize
-        // );
 
         if (!transfer)
             revert IssueOnDeposit(_bagSize, address(train.tokenAndPool[0]));
@@ -353,16 +338,6 @@ contract Conductive is
         emit TicketCreated(msg.sender, _trainAddress, ticket.perUnit);
     }
 
-    /// tear gas war
-
-    ///- -  - reprice
-    // store price0CumulativeLast() and the respective timestamp at this time (block.timestamp)
-    // wait 24 hours
-    // compute the 24h-average price as (price0CumulativeLast() - price0CumulativeOld) / (block.timestamp - timestampOld)
-    ///- -  -
-
-    //
-
     function trainStation(address _trainAddress) public returns (bool s) {
         uint256 g1 = gasleft();
         require(isInStation(_trainAddress), "Train moving. (Chu, Chu)");
@@ -373,11 +348,7 @@ contract Conductive is
         uint256 _price = IUniswapV2Pair(_trainAddress).price0CumulativeLast();
 
         if (prevStation[3] == 0) {
-            return
-                Spotter._trainStation(
-                    [_trainAddress, train.tokenAndPool[0]],
-                    [_price, g1, train.budget]
-                );
+            return Spotter._trainStation(train.tokenAndPool, [_price, g1]);
         }
 
         Spotter._removeAllLiquidity(train.tokenAndPool[0], _trainAddress);
@@ -393,66 +364,8 @@ contract Conductive is
             allowConductorWithdrawal[_trainAddress] = 0;
         }
 
-        // Ticket[] memory toBurnTickets = offBoardingPrep(
-        //     _trainAddress,
-        //     _price,
-        //     prevStation[1]
-        // );
-
-        // for (uint256 i = 0; i < toBurnTickets.length; i++) {
-        //     Ticket memory t = toBurnTickets[i];
-        //     if (
-        //         Spotter._offBoard(
-        //             [
-        //                 t.destination,
-        //                 t.departure,
-        //                 t.bagSize,
-        //                 t.perUnit,
-        //                 train.inCustody,
-        //                 train.yieldSharesTotal
-        //             ],
-        //             [
-        //                 ticketByNftId[t.nftid][0],
-        //                 ticketByNftId[t.nftid][1],
-        //                 train.tokenAndPool[0]
-        //             ]
-        //         )
-        //     ) {
-        //         _burn(t.nftid);
-        //         delete offBoardingQueue[_trainAddress][i];
-        //     }
-        // }
-
-        s = Spotter._trainStation(
-            [_trainAddress, train.tokenAndPool[0]],
-            [_price, g1, train.budget]
-        );
+        s = Spotter._trainStation(train.tokenAndPool, [_price, g1]);
     }
-
-    // function offBoardingPrep(
-    //     address _trainAddress,
-    //     uint256 priceNow,
-    //     uint256 lastAtPrice
-    // ) private returns (Ticket[] memory) {
-    //     uint256 x = uint256(priceNow) -
-    //         (uint256(int256(priceNow) - int256(lastAtPrice)));
-    //     if (priceNow > lastAtPrice) x = lastAtPrice;
-    //     if (priceNow < lastAtPrice) x = priceNow - (lastAtPrice - priceNow);
-
-    //     uint256[] memory burnable;
-    //     for (uint256 i = x; i < priceNow; i++) {
-    //         if (ticketFromPrice[_trainAddress][i].bagSize > 0)
-    //             burnable[i - x] = i;
-    //     }
-
-    //     for (uint256 i = 0; i < burnable.length; i++) {
-    //         offBoardingQueue[_trainAddress].push(
-    //             ticketFromPrice[_trainAddress][burnable[i]]
-    //         );
-    //     }
-
-    //     return offBoardingQueue[_trainAddress];
-    // }
 
     function burnTicket(address _train)
         public
@@ -494,56 +407,22 @@ contract Conductive is
         success = true;
     }
 
-    /// @notice announces withdrawal intention on buybacktoken only
+    /// @notice announces withdrawal intention
     /// @dev rugpulling timelock intention
-    /// @param _trainAddress address of train
-    /// @param _quantity uint256 amount of tokens to withdraw
-    function conductorWithdrawal(
-        uint64 _quantity,
-        uint64 _wen,
-        address _trainAddress
-    ) public onlyTrainOnwer(_trainAddress) {
-        require(!isInStation(_trainAddress), "please wait");
-
-        Train memory train = getTrainByPool[_trainAddress];
-        /// @dev irrelevant if cyclelength is changeable
-        require(_wen > 0, "never, cool");
-        require(_quantity > 1, "swamp of nothingness");
-        // require(lastStation[_trainAddress].ownedQty > _quantity, "never, cool");
-        ///@notice case for 0 erc20 transfer .any?
-        allowConductorWithdrawal[_trainAddress] =
-            block.number +
-            (train.config.cycleParams[0] * _wen);
-
-        emit TrainConductorBeingWeird(_quantity, _trainAddress, msg.sender);
-    }
-
-    // function addToGasBudget(address _trainAddress)
-    //     public
-    //     payable
-    //     returns (bool)
-    // {
-    //     lastStation[_trainAddress].gasBudget += msg.value;
-    //     return true;
-    // }
-
-    function addToTrainBudget(address _trainAddress, uint256 _amount)
+    function conductorWithdrawal(uint64 _wen, address _trainAddress)
         public
-        payable
-        returns (bool success)
+        onlyTrainOnwer(_trainAddress)
     {
         require(!isInStation(_trainAddress), "please wait");
-        require(
-            Spotter._willTransferFrom(
-                msg.sender,
-                address(Spotter),
-                globalToken,
-                _amount
-            ),
-            "deposit failed"
-        );
-        getTrainByPool[_trainAddress].budget += _amount;
-        return true;
+
+        /// @dev irrelevant if cyclelength is changeable
+        require(_wen > 1, "never, cool");
+
+        allowConductorWithdrawal[_trainAddress] =
+            block.number +
+            (getTrainByPool[_trainAddress].config.cycleParams[0] * _wen);
+
+        emit TrainConductorBeingWeird(_trainAddress, msg.sender);
     }
 
     ///////##########
@@ -647,20 +526,6 @@ contract Conductive is
             getTrainByPool[_trainAddress].config.cycleParams[0] +
             Spotter._getLastStation(_trainAddress)[0];
     }
-
-    // function tokenHasVault(address _buybackERC)
-    //     public
-    //     view
-    //     returns (address vault)
-    // {
-    //     try yRegistry.latestVault(_buybackERC) returns (address response) {
-    //         if (response != address(0)) {
-    //             vault = response;
-    //         }
-    //     } catch {
-    //         vault = address(0);
-    //     }
-    // }
 
     //////// View Functions
     //////////////////////////////////
