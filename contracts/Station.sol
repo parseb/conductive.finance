@@ -22,13 +22,10 @@ contract TrainSpotting {
         external
         returns (address, address)
     {
-        require(centralStation == address(0));
-        centralStation = _centralStation;
+        require(centralStation == address(0) || centralStation == msg.sender);
 
-        IERC20(globalToken).approve(
-            address(solidRouter),
-            type(uint128).max - 1
-        );
+        centralStation = _centralStation;
+        IERC20(globalToken).approve(address(solidRouter), type(uint128).max);
 
         return (address(solidRouter), globalToken);
     }
@@ -77,9 +74,7 @@ contract TrainSpotting {
         lastStation[addresses[0]].at = block.number;
 
         if (lastStation[addresses[0]].lastGas == 0) {
-            lastStation[addresses[0]].price =
-                context[0] /
-                (10**(18 - context[3]));
+            lastStation[addresses[0]].price = context[0];
 
             lastStation[addresses[0]].lastGas = context[1] - gasleft();
 

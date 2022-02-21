@@ -23,7 +23,7 @@ def test_create_train_with_0_values_in_configlist_fails(Conductive):
     with reverts():
         Conductive.createTrain(
             accounts[5].address,
-            [101, 0, 51, 2],
+            [1338, 3],
             2,
             10,
             False,
@@ -40,7 +40,7 @@ def test_train_create_generates_valid_pool_registry(
     if p0 == ZERO_ADDRESS:
         assert Conductive.createTrain(
             YFI.address,
-            [100, 5, 50, 1],
+            [1338, 3],
             2,
             10,
             False,
@@ -52,7 +52,7 @@ def test_train_create_generates_valid_pool_registry(
     else:
         assert Conductive.createTrain(
             YFI.address,
-            [100, 5, 50, 1],
+            [1338, 3],
             2,
             10,
             False,
@@ -75,7 +75,7 @@ def test_creating_train_with_existing_pool_fails(
     with reverts("exists or no pool"):
         Conductive.createTrain(
             YFI.address,
-            [101, 51, 51, 2],
+            [1338, 51],
             2,
             10,
             False,
@@ -139,6 +139,7 @@ def test_burns_ticket_strightforward(Conductive, TrainS, YFIwFTM, YFI):
         Conductive.ownerOf(ticket[-1])
     burned = Conductive.getTicket(accounts[1], YFIwFTM)
     assert burned[0] == burned[1] == burned[2] == burned[3] == burned[5] == 0
+    chain.mine(6)
 
 
 def test_burns_ticket_after_station_cycle(
@@ -154,7 +155,7 @@ def test_burns_ticket_after_station_cycle(
 ):
     assert Conductive.createTicket(
         100,
-        200 * (10 ** 18),
+        230 * (10 ** 18),
         YFIwFTM,
         2 * (10 ** 18),
         {"from": accounts[1]},

@@ -11,7 +11,7 @@ interface ITrainSpotting {
 
     function _trainStation(
         address[2] memory addresses,
-        uint256[5] memory context
+        uint256[3] memory context
     ) external returns (bool);
 
     function _offBoard(uint256[6] memory params, address[3] memory addresses)

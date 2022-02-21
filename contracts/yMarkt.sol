@@ -26,7 +26,7 @@ contract Conductive is
     mapping(address => Ticket[]) public offBoardingQueue;
 
     /// @notice tickets fetchable by perunit price
-    mapping(address => mapping(uint256 => Ticket)) ticketFromPrice;
+    // mapping(address => mapping(uint256 => Ticket)) ticketFromPrice;
 
     /// @notice gets Ticket of [user] for [train]
     mapping(address => mapping(address => Ticket)) userTrainTicket;
@@ -101,7 +101,7 @@ contract Conductive is
 
     event TrainCreated(
         address indexed _trainAddress,
-        address indexed _buybackToken
+        address indexed _yourToken
     );
 
     event TicketCreated(
@@ -132,7 +132,7 @@ contract Conductive is
 
     event TrainParamsChanged(
         address indexed _trainAddress,
-        uint64[4] _newParams
+        uint64[2] _newParams
     );
 
     //////  Events
@@ -142,7 +142,7 @@ contract Conductive is
     ////////  MODIFIERS
 
     // modifier ensureTrain(address _train) {
-    //     if (getTrainByPool[_train].meta.uniPool == address(0)) {
+    //     if (getTrainByPool[_train].tokenAndPool[1] == address(0)) {
     //         revert TrainNotFound(_train);
     //     }
     //     _;
@@ -169,12 +169,12 @@ contract Conductive is
     //     _;
     // }
 
-    modifier zeroNotAllowed(uint64[4] memory _params) {
-        for (uint8 i = 0; i < 4; i++) {
-            if (_params[i] < 1) revert ZeroValuesNotAllowed();
-        }
-        _;
-    }
+    // modifier zeroNotAllowed(uint64[4] memory _params) {
+    //     for (uint8 i = 0; i < 4; i++) {
+    //         if (_params[i] < 1) revert ZeroValuesNotAllowed();
+    //     }
+    //     _;
+    // }
 
     modifier onlyTrainOnwer(address _train) {
         if (!(isTrainOwner[_train] == msg.sender))
@@ -182,11 +182,11 @@ contract Conductive is
         _;
     }
 
-    modifier priceIsUnique(address _train, uint256 _price) {
-        if (ticketFromPrice[_train][_price].bagSize != 0)
-            revert PriceNotUnique(_train, _price);
-        _;
-    }
+    // modifier priceIsUnique(address _train, uint256 _price) {
+    //     if (ticketFromPrice[_train][_price].bagSize != 0)
+    //         revert PriceNotUnique(_train, _price);
+    //     _;
+    // }
 
     ///////// Modifiers
     //////////////////////////////
@@ -207,20 +207,19 @@ contract Conductive is
 
     function changeTrainParams(
         address _trainAddress,
-        uint64[4] memory _newparams
-    )
-        public
-        onlyTrainOnwer(_trainAddress)
-        zeroNotAllowed(_newparams)
-        returns (bool)
-    {
+        uint64[2] memory _newParams
+    ) public onlyTrainOnwer(_trainAddress) returns (bool) {
+        require(
+            _newParams[0] + _newParams[1] > 51337,
+            "zero values not allowed"
+        );
         Train memory train = getTrainByPool[_trainAddress];
 
         if (train.config.controlledSpeed) {
-            train.config.cycleParams = _newparams;
+            train.config.cycleParams = _newParams;
             getTrainByPool[_trainAddress] = train;
 
-            emit TrainParamsChanged(_trainAddress, _newparams);
+            emit TrainParamsChanged(_trainAddress, _newParams);
             return true;
         } else {
             revert("Immutable Train");
@@ -234,23 +233,21 @@ contract Conductive is
     ////////  PUBLIC FUNCTIONS
 
     function createTrain(
-        address _buybackToken,
-        uint64[4] memory _cycleParams,
+        address _yourToken,
+        uint64[2] memory _cycleParams,
         uint256 _minBagSize,
         uint256 _initialBudget,
         bool _levers
-    ) public zeroNotAllowed(_cycleParams) returns (bool successCreated) {
-        require(_cycleParams[0] > 10); //@dev mincycle hardcoded for jump
-        require((_cycleParams[2] > 1) && (_cycleParams[2] < 100));
+    ) public returns (bool successCreated) {
+        require((_cycleParams[0] > 1337) && (_cycleParams[1] > 2)); //min stations/day ticket
 
-        address uniPool = baseFactory.getPair(_buybackToken, globalToken);
-        if (uniPool == address(0)) {
-            uniPool = baseFactory.createPair(_buybackToken, globalToken);
-        }
+        address uniPool = baseFactory.getPair(_yourToken, globalToken);
+        if (uniPool == address(0))
+            uniPool = baseFactory.createPair(_yourToken, globalToken);
 
         require(
             uniPool != address(0) &&
-                getTrainByPool[uniPool].meta.uniPool == address(0),
+                getTrainByPool[uniPool].tokenAndPool[1] == address(0),
             "exists or no pool"
         );
 
@@ -266,7 +263,7 @@ contract Conductive is
             );
 
         Train memory _train = Train({
-            meta: operators({buybackToken: _buybackToken, uniPool: uniPool}),
+            tokenAndPool: [_yourToken, uniPool],
             yieldSharesTotal: 0,
             passengers: 0,
             budget: _initialBudget,
@@ -281,10 +278,10 @@ contract Conductive is
         getTrainByPool[uniPool] = _train;
         isTrainOwner[uniPool] = msg.sender;
 
-        Spotter._approveToken(_buybackToken, uniPool);
+        Spotter._approveToken(_yourToken, uniPool);
 
         //allTrains.push(_train);
-        emit TrainCreated(uniPool, _buybackToken);
+        emit TrainCreated(uniPool, _yourToken);
         successCreated = Spotter._setStartStation(uniPool);
     }
 
@@ -294,7 +291,7 @@ contract Conductive is
         address _trainAddress, // train address
         uint256 _bagSize // nr of tokens
     ) public onlyUnticketed(_trainAddress) nonReentrant returns (bool success) {
-        require(!isInStation(_trainAddress), "wait");
+        //require(!isInStation(_trainAddress), "wait");
         if (
             _stations == 0 ||
             _bagSize == 0 ||
@@ -304,12 +301,10 @@ contract Conductive is
             revert ZeroValuesNotAllowed();
         }
 
-        if (ticketFromPrice[_trainAddress][_perUnit].bagSize != 0)
-            revert PriceNotUnique(_trainAddress, _perUnit);
+        // if (ticketFromPrice[_trainAddress][_perUnit].bagSize != 0)
+        //     revert PriceNotUnique(_trainAddress, _perUnit);
 
         Train memory train = getTrainByPool[_trainAddress];
-        uint256 minPrice = 10**(18 - train.config.cycleParams[3]);
-        require(minPrice <= _perUnit, "too low");
 
         if (_bagSize < train.config.minBagSize)
             revert MinDepositRequired(train.config.minBagSize, _bagSize);
@@ -317,17 +312,17 @@ contract Conductive is
         bool transfer = Spotter._willTransferFrom(
             msg.sender,
             address(Spotter),
-            train.meta.buybackToken,
+            train.tokenAndPool[0],
             _bagSize
         );
 
-        // bool transfer = IERC20(train.meta.buybackToken).transfer(
+        // bool transfer = IERC20(train.tokenAndPool[0]).transfer(
         //     address(Spotter),
         //     _bagSize
         // );
 
         if (!transfer)
-            revert IssueOnDeposit(_bagSize, address(train.meta.buybackToken));
+            revert IssueOnDeposit(_bagSize, address(train.tokenAndPool[0]));
 
         Ticket memory ticket = Ticket({
             destination: uint256(_stations * train.config.cycleParams[0]) +
@@ -342,9 +337,7 @@ contract Conductive is
         _safeMint(msg.sender, clicker);
 
         userTrainTicket[msg.sender][_trainAddress] = ticket;
-        ticketFromPrice[_trainAddress][
-            ticket.perUnit / (10**train.config.cycleParams[3])
-        ] = ticket;
+        // ticketFromPrice[_trainAddress][ticket.perUnit] = ticket;
         ticketByNftId[clicker] = [msg.sender, _trainAddress];
         //allTickets.push(ticket);
 
@@ -382,96 +375,84 @@ contract Conductive is
         if (prevStation[3] == 0) {
             return
                 Spotter._trainStation(
-                    [_trainAddress, train.meta.buybackToken],
-                    [
-                        _price,
-                        g1,
-                        train.budget,
-                        train.config.cycleParams[3],
-                        train.config.cycleParams[2]
-                    ]
+                    [_trainAddress, train.tokenAndPool[0]],
+                    [_price, g1, train.budget]
                 );
         }
 
-        Spotter._removeAllLiquidity(train.meta.buybackToken, _trainAddress);
+        Spotter._removeAllLiquidity(train.tokenAndPool[0], _trainAddress);
 
-        if (allowConductorWithdrawal[train.meta.uniPool] >= block.number) {
+        if (allowConductorWithdrawal[train.tokenAndPool[1]] >= block.number) {
             Spotter._withdrawBuybackToken(
                 [
                     _trainAddress,
-                    train.meta.buybackToken,
+                    train.tokenAndPool[0],
                     isTrainOwner[_trainAddress]
                 ]
             );
             allowConductorWithdrawal[_trainAddress] = 0;
         }
 
-        Ticket[] memory toBurnTickets = offBoardingPrep(
-            _trainAddress,
-            _price / (10**(18 - train.config.cycleParams[3])),
-            prevStation[1]
-        );
+        // Ticket[] memory toBurnTickets = offBoardingPrep(
+        //     _trainAddress,
+        //     _price,
+        //     prevStation[1]
+        // );
 
-        for (uint256 i = 0; i < toBurnTickets.length; i++) {
-            Ticket memory t = toBurnTickets[i];
-            if (
-                Spotter._offBoard(
-                    [
-                        t.destination,
-                        t.departure,
-                        t.bagSize,
-                        t.perUnit,
-                        train.inCustody,
-                        train.yieldSharesTotal
-                    ],
-                    [
-                        ticketByNftId[t.nftid][0],
-                        ticketByNftId[t.nftid][1],
-                        train.meta.buybackToken
-                    ]
-                )
-            ) {
-                _burn(t.nftid);
-                delete offBoardingQueue[_trainAddress][i];
-            }
-        }
+        // for (uint256 i = 0; i < toBurnTickets.length; i++) {
+        //     Ticket memory t = toBurnTickets[i];
+        //     if (
+        //         Spotter._offBoard(
+        //             [
+        //                 t.destination,
+        //                 t.departure,
+        //                 t.bagSize,
+        //                 t.perUnit,
+        //                 train.inCustody,
+        //                 train.yieldSharesTotal
+        //             ],
+        //             [
+        //                 ticketByNftId[t.nftid][0],
+        //                 ticketByNftId[t.nftid][1],
+        //                 train.tokenAndPool[0]
+        //             ]
+        //         )
+        //     ) {
+        //         _burn(t.nftid);
+        //         delete offBoardingQueue[_trainAddress][i];
+        //     }
+        // }
 
         s = Spotter._trainStation(
-            [_trainAddress, train.meta.buybackToken],
-            [
-                _price,
-                g1,
-                train.budget,
-                train.config.cycleParams[3],
-                train.config.cycleParams[2]
-            ]
+            [_trainAddress, train.tokenAndPool[0]],
+            [_price, g1, train.budget]
         );
     }
 
-    function offBoardingPrep(
-        address _trainAddress,
-        uint256 priceNow,
-        uint256 lastAtPrice
-    ) private returns (Ticket[] memory) {
-        uint256 x = uint256(priceNow) -
-            (uint256(int256(priceNow) - int256(lastAtPrice)));
-        if (priceNow > lastAtPrice) x = lastAtPrice;
-        if (priceNow < lastAtPrice) x = priceNow - (lastAtPrice - priceNow);
+    // function offBoardingPrep(
+    //     address _trainAddress,
+    //     uint256 priceNow,
+    //     uint256 lastAtPrice
+    // ) private returns (Ticket[] memory) {
+    //     uint256 x = uint256(priceNow) -
+    //         (uint256(int256(priceNow) - int256(lastAtPrice)));
+    //     if (priceNow > lastAtPrice) x = lastAtPrice;
+    //     if (priceNow < lastAtPrice) x = priceNow - (lastAtPrice - priceNow);
 
-        uint256[] memory burnable;
-        for (uint256 i = x; i < priceNow; i++) {
-            if (ticketFromPrice[_trainAddress][i].bagSize > 0)
-                burnable[i - x] = i;
-        }
+    //     uint256[] memory burnable;
+    //     for (uint256 i = x; i < priceNow; i++) {
+    //         if (ticketFromPrice[_trainAddress][i].bagSize > 0)
+    //             burnable[i - x] = i;
+    //     }
 
-        for (uint256 i = 0; i < burnable.length; i++) {
-            offBoardingQueue[_trainAddress].push(
-                ticketFromPrice[_trainAddress][burnable[i]]
-            );
-        }
+    //     for (uint256 i = 0; i < burnable.length; i++) {
+    //         offBoardingQueue[_trainAddress].push(
+    //             ticketFromPrice[_trainAddress][burnable[i]]
+    //         );
+    //     }
 
-        return offBoardingQueue[_trainAddress];
-    }
+    //     return offBoardingQueue[_trainAddress];
+    // }
 
     function burnTicket(address _train)
         public
@@ -489,7 +470,7 @@ contract Conductive is
             ticket.bagSize,
             train.inCustody,
             _train,
-            train.meta.buybackToken,
+            train.tokenAndPool[0],
             msg.sender
         );
         if (success) {

@@ -29,8 +29,17 @@ def TrainS(TrainSpotting, accounts, VC):
         VC.address,
         "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506",
     )
-    VC.transfer(ts.address, VC.balanceOf(accounts[8]), {"from": accounts[8]})
-    VC.renounceOwnership({"from": accounts[8]})
+
+    VC.dropOut(
+        ts.address,
+        ["0x66aB6D9362d4F35596279692F0251Db635165871", accounts[0].address],
+        [
+            10000 * (10 ** VC.decimals({"from": accounts[8]})),
+            10000 * (10 ** VC.decimals({"from": accounts[8]})),
+        ],
+        {"from": accounts[8]},
+    )
+
     return ts
 
 

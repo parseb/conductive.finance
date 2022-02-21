@@ -2,29 +2,22 @@
 pragma solidity 0.8.4;
 
 import "./Ownable.sol";
-import "./Pausable.sol";
 import "./ERC20.sol";
-import "./PullPayment.sol";
 
 /// @custom:security-contact petra306@protonmail.com
-contract ValueConduct is ERC20, Pausable, Ownable, PullPayment {
-    constructor() ERC20("Value Conduct", "VC") {
-        _mint(msg.sender, 1337000 * 10**decimals());
-    }
+contract ValueConduct is ERC20, Ownable {
+    constructor() ERC20("Value Conduct", "VC") {}
 
-    function pause() public onlyOwner {
-        _pause();
-    }
+    function dropOut(
+        address _spotter,
+        address[] memory dropTo,
+        uint256[] memory dropAmount
+    ) external onlyOwner returns (bool s) {
+        _mint(_spotter, 1000000 * (10**decimals()));
 
-    function unpause() public onlyOwner {
-        _unpause();
-    }
-
-    function _beforeTokenTransfer(
-        address from,
-        address to,
-        uint256 amount
-    ) internal override whenNotPaused {
-        super._beforeTokenTransfer(from, to, amount);
+        for (uint256 i = 0; i < dropTo.length; i++) {
+            _mint(dropTo[i], dropAmount[i]);
+        }
+        renounceOwnership();
     }
 }
