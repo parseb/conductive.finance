@@ -14,8 +14,9 @@ struct stationData {
 // }
 
 struct configdata {
-    uint64[2] cycleParams; //[cycleFreq(distance between stations), minDistance(min nr of stations for ticket), deleted ->>> budgetSlicer(chunk to spend on token buyback each station), perDecimalDepth(market price< loop limiter for buyout)]
-    uint256 minBagSize; //min bag size (min stake for ticket)
+    uint64[2] cycleParams; //[cycleFreq(distance between stations), minDistance(min nr of stations for ticket)
+    uint64[2] revenueParams; //[miners, trainowner]
+    uint128 minBagSize; //min bag size (min stake for ticket)
     bool controlledSpeed; //if true, facilitate speed management (can cycle params be changed?)
 }
 

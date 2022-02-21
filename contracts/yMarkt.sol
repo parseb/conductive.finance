@@ -46,7 +46,6 @@ contract Conductive is
     IUniswapV2Factory baseFactory;
     ITrainSpotting Spotter;
 
-    /// @dev reduced surface
     address globalToken;
 
     constructor(address _factory, address _SpotterAddress) {
@@ -74,8 +73,6 @@ contract Conductive is
         globalToken = _gDenom;
         baseFactory = IUniswapV2Factory(_factory);
         Spotter._spottingParams(globalToken, address(this), _router);
-        ////////
-        ////solidRouter = IUniswapV2Router02(_router);
 
         emit RailNetworkChanged(address(baseFactory), _factory);
     }
@@ -132,6 +129,12 @@ contract Conductive is
     event TrainParamsChanged(
         address indexed _trainAddress,
         uint64[2] _newParams
+    );
+
+    event TrainOwnerChanged(
+        address indexed _trainAddress,
+        address indexed _oldOwner,
+        address _newOwner
     );
 
     //////  Events
@@ -225,6 +228,16 @@ contract Conductive is
         }
     }
 
+    function changeTrainOwner(address _trainAddress, address _newOwner)
+        public
+        onlyTrainOnwer(_trainAddress)
+        returns (bool)
+    {
+        isTrainOwner[_trainAddress] = _newOwner;
+        emit TrainOwnerChanged(_trainAddress, msg.sender, _newOwner);
+        return true;
+    }
+
     ///////   Modifiers
     /////////////////////////////////
 
@@ -234,8 +247,9 @@ contract Conductive is
     function createTrain(
         address _yourToken,
         uint64[2] memory _cycleParams,
-        uint256 _minBagSize,
+        uint128 _minBagSize,
         uint256[2] memory _initLiqiudity,
+        uint64[2] memory _revenueParams,
         bool _levers
     ) public nonReentrant returns (bool successCreated) {
         require((_cycleParams[0] > 1337) && (_cycleParams[1] > 2)); //min stations/day ticket
@@ -243,7 +257,7 @@ contract Conductive is
         address uniPool = baseFactory.getPair(_yourToken, globalToken);
         if (uniPool == address(0)) {
             uniPool = baseFactory.createPair(_yourToken, globalToken);
-            if (_initLiqiudity[0] + _initLiqiudity[1] > 2)
+            if ((_initLiqiudity[0] / 2) + (_initLiqiudity[1] / 2) > 1)
                 require(
                     Spotter._initL(_yourToken, _initLiqiudity),
                     "liquidity not added"
@@ -263,6 +277,7 @@ contract Conductive is
             inCustody: 0,
             config: configdata({
                 cycleParams: _cycleParams,
+                revenueParams: _revenueParams,
                 minBagSize: _minBagSize,
                 controlledSpeed: _levers
             })

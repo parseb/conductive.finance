@@ -30,6 +30,7 @@ def test_train_create_generates_valid_pool_registry(
             [1338, 3],
             2,
             [0, 0],
+            [0, 0],
             False,
             {"from": accounts[0]},
         )  # returns True
@@ -41,6 +42,7 @@ def test_train_create_generates_valid_pool_registry(
             YFI.address,
             [1338, 3],
             2,
+            [0, 0],
             [0, 0],
             False,
             {"from": accounts[0]},
@@ -64,6 +66,7 @@ def test_creating_train_with_existing_pool_fails(
             YFI.address,
             [1338, 51],
             2,
+            [0, 0],
             [0, 0],
             False,
             {"from": accounts[0]},
