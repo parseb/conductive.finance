@@ -35,4 +35,5 @@ struct Ticket {
     uint256 perUnit; //buyout price
     address trainAddress; //train ID (pair pool)
     uint256 nftid; //nft id
+    address burner; //has right to burn
 }

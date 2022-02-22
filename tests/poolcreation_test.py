@@ -103,11 +103,11 @@ def test_create_ticket(Conductive, wFTM, YFI, YFIwFTM, YFIrich, TrainS):
     chain.mine(1)
 
     getTicket = Conductive.getTicket(accounts[1], YFIwFTM)
-    getTicketById = Conductive.getTicketById(getTicket[-1])
+    getTicketById = Conductive.getTicketById(getTicket[-2])
 
     assert getTicket == getTicketById
-    assert Conductive.ownerOf(getTicket[-1]) == accounts[1]
-    assert getTicket[-2] == YFIwFTM
+    assert Conductive.ownerOf(getTicket[-2]) == accounts[1]
+    assert getTicket[-3] == YFIwFTM
     assert chain.height == getTicket[1] + 1
 
 
@@ -126,7 +126,7 @@ def test_burns_ticket_strightforward(Conductive, TrainS, YFIwFTM, YFI):
     assert after_contract_balance >= prev_contract_balance - ticket[2]
 
     with reverts():
-        Conductive.ownerOf(ticket[-1])
+        Conductive.ownerOf(ticket[-2])
     burned = Conductive.getTicket(accounts[1], YFIwFTM)
     assert burned[0] == burned[1] == burned[2] == burned[3] == burned[5] == 0
     chain.mine(6)
@@ -159,7 +159,7 @@ def test_burns_ticket_after_station_cycle(
     nextStationAt = Conductive.nextStationAt(YFIwFTM)
     wFTM.approve(TrainS.address, 999999 * (10 ** 18), {"from": accounts[1]})
 
-    with reverts("Train moving. (Chu, Chu)"):
+    with reverts("Train none or moving"):
         Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
 
     chain.mine(nextStationAt - chain.height - 1)
@@ -173,7 +173,7 @@ def test_burns_ticket_after_station_cycle(
     chain.mine(1)
 
     ## not is station
-    with reverts("Train moving. (Chu, Chu)"):
+    with reverts("Train none or moving"):
         Conductive.trainStation(YFIwFTM, {"from": accounts[7]})
 
     ## second station

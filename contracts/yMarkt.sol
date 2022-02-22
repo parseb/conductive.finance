@@ -83,11 +83,12 @@ contract Conductive is
     error AlreadyOnThisTrain(address train);
     error NotOnThisTrain(address train);
     error ZeroValuesNotAllowed();
-    // error TrainNotFound(address ghostTrain);
+    error TrainNotFound(address ghostTrain);
     error IssueOnDeposit(uint256 amount, address token);
     error MinDepositRequired(uint256 required, uint256 provided);
     error NotTrainOwnerError(address _train, address _perp);
     error PriceNotUnique(address _train, uint256 _price);
+    error UnavailableInStation(address _train);
     //////  Errors
     ////////////////////////////////
 
@@ -113,7 +114,7 @@ contract Conductive is
         uint256 _nftid
     );
 
-    event JumpedOut(
+    event IsOut(
         address indexed _who,
         address indexed _ofTrain,
         uint256 indexed _nftID
@@ -143,34 +144,6 @@ contract Conductive is
     ////////////////////////////////
     ////////  MODIFIERS
 
-    // modifier ensureTrain(address _train) {
-    //     if (getTrainByPool[_train].tokenAndPool[1] == address(0)) {
-    //         revert TrainNotFound(_train);
-    //     }
-    //     _;
-    // }
-
-    /// @dev ensure offboarding nulls ticket / destination
-    modifier onlyUnticketed(address _train) {
-        if (userTrainTicket[msg.sender][_train].destination > 0)
-            revert AlreadyOnThisTrain(_train);
-        _;
-    }
-
-    modifier onlyTicketed(address _train) {
-        if (userTrainTicket[msg.sender][_train].destination == 0)
-            revert NotOnThisTrain(_train);
-        _;
-    }
-
-    // modifier onlyExpiredTickets(address _train) {
-    //     require(
-    //         userTrainTicket[msg.sender][_train].destination < block.number,
-    //         "Train is Moving"
-    //     );
-    //     _;
-    // }
-
     // modifier zeroNotAllowed(uint64[4] memory _params) {
     //     for (uint8 i = 0; i < 4; i++) {
     //         if (_params[i] < 1) revert ZeroValuesNotAllowed();
@@ -178,17 +151,11 @@ contract Conductive is
     //     _;
     // }
 
-    modifier onlyTrainOnwer(address _train) {
+    modifier onlyTrainOwner(address _train) {
         if (!(isTrainOwner[_train] == msg.sender))
             revert NotTrainOwnerError(_train, msg.sender);
         _;
     }
-
-    // modifier priceIsUnique(address _train, uint256 _price) {
-    //     if (ticketFromPrice[_train][_price].bagSize != 0)
-    //         revert PriceNotUnique(_train, _price);
-    //     _;
-    // }
 
     ///////// Modifiers
     //////////////////////////////
@@ -210,12 +177,16 @@ contract Conductive is
     function changeTrainParams(
         address _trainAddress,
         uint64[2] memory _newParams
-    ) public onlyTrainOnwer(_trainAddress) returns (bool) {
+    ) public onlyTrainOwner(_trainAddress) returns (bool) {
         require(
             _newParams[0] + _newParams[1] > 51337,
             "zero values not allowed"
         );
+
         Train memory train = getTrainByPool[_trainAddress];
+
+        if (train.tokenAndPool[0] == address(0))
+            revert TrainNotFound(_trainAddress);
 
         if (train.config.controlledSpeed) {
             train.config.cycleParams = _newParams;
@@ -230,7 +201,7 @@ contract Conductive is
 
     function changeTrainOwner(address _trainAddress, address _newOwner)
         public
-        onlyTrainOnwer(_trainAddress)
+        onlyTrainOwner(_trainAddress)
         returns (bool)
     {
         isTrainOwner[_trainAddress] = _newOwner;
@@ -298,8 +269,12 @@ contract Conductive is
         uint256 _perUnit, // target price
         address _trainAddress, // train address
         uint256 _bagSize // nr of tokens
-    ) public nonReentrant onlyUnticketed(_trainAddress) returns (bool success) {
-        //require(!isInStation(_trainAddress), "wait");
+    ) public nonReentrant returns (bool success) {
+        // if (!isInStation(_trainAddress))
+        //     revert UnavailableInStation(_trainAddress);
+        if (userTrainTicket[msg.sender][_trainAddress].destination > 0)
+            revert AlreadyOnThisTrain(_trainAddress);
+
         if (
             _stations == 0 ||
             _bagSize == 0 ||
@@ -310,7 +285,8 @@ contract Conductive is
         }
 
         Train memory train = getTrainByPool[_trainAddress];
-
+        if (train.tokenAndPool[0] == address(0))
+            revert TrainNotFound(_trainAddress);
         if (_bagSize < train.config.minBagSize)
             revert MinDepositRequired(train.config.minBagSize, _bagSize);
 
@@ -331,7 +307,8 @@ contract Conductive is
             bagSize: _bagSize,
             perUnit: _perUnit,
             trainAddress: _trainAddress,
-            nftid: clicker
+            nftid: clicker,
+            burner: msg.sender
         });
 
         _safeMint(msg.sender, clicker);
@@ -355,7 +332,7 @@ contract Conductive is
 
     function trainStation(address _trainAddress) public returns (bool s) {
         uint256 g1 = gasleft();
-        require(isInStation(_trainAddress), "Train moving. (Chu, Chu)");
+        require(isInStation(_trainAddress), "Train none or moving");
         uint256[4] memory prevStation = Spotter._getLastStation(_trainAddress);
         require(prevStation[0] != block.number, "Departing");
 
@@ -384,13 +361,11 @@ contract Conductive is
 
     function burnTicket(address _train)
         public
-        onlyTicketed(_train)
         nonReentrant
         returns (bool success)
     {
-        require(!isInStation(_train), "please wait");
         Ticket memory ticket = userTrainTicket[msg.sender][_train];
-        require(ticket.bagSize > 0, "Already Burned");
+        require(ticket.burner == msg.sender, "Unauthorised");
         require(ticket.departure + 10 < block.number, "too soon");
         Train memory train = getTrainByPool[ticket.trainAddress];
         // uint256 amountOut, uint256 inCustody, address poolAddr, address bToken
@@ -403,11 +378,23 @@ contract Conductive is
         );
         if (success) {
             _burn(ticket.nftid);
-            emit JumpedOut(msg.sender, _train, ticket.nftid);
+            emit IsOut(msg.sender, _train, ticket.nftid);
         }
     }
 
-    ///@dev gas war - feature or bug?
+    function burnAsCollateral() public returns (bool)dss {}
+
+    function assignBurner(uint128 _id, address _newBurner)
+        public
+        returns (bool)
+    {
+        Ticket memory ticket = getTicketById(_id);
+        require(ticket.burner == msg.sender, "Unauthorised");
+        ticket.burner = _newBurner;
+        userTrainTicket[ticketByNftId[_id][0]][ticketByNftId[_id][1]] = ticket;
+
+        emit ChangedBurnerOf(_id, _newBurner, ticketByNftId[_id][1]);
+    }
 
     function requestOffBoarding(address _trainAddress)
         public
@@ -426,9 +413,10 @@ contract Conductive is
     /// @dev rugpulling timelock intention
     function conductorWithdrawal(uint64 _wen, address _trainAddress)
         public
-        onlyTrainOnwer(_trainAddress)
+        onlyTrainOwner(_trainAddress)
     {
-        require(!isInStation(_trainAddress), "please wait");
+        if (!isInStation(_trainAddress))
+            revert UnavailableInStation(_trainAddress);
 
         /// @dev irrelevant if cyclelength is changeable
         require(_wen > 1, "never, cool");
