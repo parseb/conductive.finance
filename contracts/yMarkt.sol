@@ -2,7 +2,7 @@
 pragma solidity 0.8.4;
 
 /// @security development only
-/// @security contact:@parseb
+/// @security contact: petra306@protonmail.com
 
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/access/Ownable.sol";
 import "OpenZeppelin/openzeppelin-contracts@4.4.2/contracts/interfaces/IERC20Metadata.sol";
@@ -36,6 +36,9 @@ contract Conductive is
 
     /// @notice stores train owner
     mapping(address => address) isTrainOwner;
+
+    /// @notice true if user has requested offboarding - should prevent burner
+    mapping(uint256 => bool) public requestedOffBoarding;
 
     /// @notice stores after what block conductor will be able to withdraw howmuch of buybacked token
     mapping(address => uint256) allowConductorWithdrawal; //[block]
@@ -328,10 +331,9 @@ contract Conductive is
         _safeMint(msg.sender, clicker);
 
         userTrainTicket[msg.sender][_trainAddress] = ticket;
-        // ticketFromPrice[_trainAddress][ticket.perUnit] = ticket;
         ticketByNftId[clicker] = [msg.sender, _trainAddress];
-        //allTickets.push(ticket);
 
+        allTickets.push(ticket);
         getTrainByPool[_trainAddress].passengers += 1;
         getTrainByPool[_trainAddress].inCustody += _bagSize;
         getTrainByPool[_trainAddress].yieldSharesTotal +=
@@ -381,6 +383,7 @@ contract Conductive is
         Ticket memory ticket = getTicketById(_nftId);
         require(ticket.burner == msg.sender, "Unauthorised");
         require(ticket.departure + 10 < block.number, "too soon");
+        require(!requestedOffBoarding[_nftId], "offboarding in progress");
         Train memory train = getTrainByPool[ticket.trainAddress];
         // uint256 amountOut, uint256 inCustody, address poolAddr, address bToken
         success = Spotter._tokenOut(
@@ -398,12 +401,16 @@ contract Conductive is
 
     function assignBurner(uint128 _id, address _newBurner)
         public
+        nonReentrant
         returns (bool s)
     {
         Ticket memory ticket = getTicketById(_id);
         require(ticket.burner == msg.sender, "Unauthorised");
+        require(!requestedOffBoarding[_id]);
         ticket.burner = _newBurner;
+
         userTrainTicket[ticketByNftId[_id][0]][ticketByNftId[_id][1]] = ticket;
+
         s = true;
         emit ChangedBurnerOf(_id, _newBurner, ticketByNftId[_id][1]);
     }
@@ -414,8 +421,10 @@ contract Conductive is
         returns (bool success)
     {
         Ticket memory ticket = userTrainTicket[msg.sender][_trainAddress];
-        require(stationsLeft(ticket.nftid) <= 1, "maybe not next staton");
         require(ticket.burner == msg.sender, "active as collateral");
+        require(stationsLeft(ticket.nftid) <= 1, "maybe not next staton");
+        require(!requestedOffBoarding[ticket.nftid]);
+        requestedOffBoarding[ticket.nftid] = true;
         offBoardingQueue[_trainAddress].push(ticket);
 
         success = true;
@@ -514,8 +523,7 @@ contract Conductive is
         view
         returns (Ticket memory ticket)
     {
-        address[2] memory _from = ticketByNftId[_id];
-        ticket = getTicket(_from[0], _from[1]);
+        ticket = getTicket(ticketByNftId[_id][0], ticketByNftId[_id][1]);
     }
 
     // function isRugpullNow(address _trainAddress) public view returns (bool) {
@@ -523,8 +531,9 @@ contract Conductive is
     // }
 
     function stationsLeft(uint256 _nftID) public view returns (uint64) {
-        address[2] memory whoTrain = ticketByNftId[_nftID]; ///addres /
-        Ticket memory ticket = userTrainTicket[whoTrain[0]][whoTrain[1]];
+        Ticket memory ticket = userTrainTicket[ticketByNftId[_nftID][0]][
+            ticketByNftId[_nftID][1]
+        ];
         return
             uint64(
                 (ticket.destination - block.number) /
