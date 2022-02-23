@@ -242,6 +242,7 @@ def test_adds_to_offboard_request(Conductive, YFIwFTM, YFI, TrainS, wFTM):
     stationLeft = Conductive.nextStationAt(ticket[-3])
     chain.mine(ticket[0] - chain.height)
     assert Conductive.stationsLeft(ticket[-2]) <= 1
+    chain
     assert Conductive.requestOffBoarding(ticket[-3], {"from": accounts[1]})
 
     afterRequest = Conductive.offBoardingQueue(ticket[-3], 0, {"from": accounts[8]})
