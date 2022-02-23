@@ -23,7 +23,7 @@ contract Conductive is
     Ticket[] public allTickets;
     Train[] public allTrains;
 
-    mapping(address => Ticket[]) public offBoardingQueue;
+    mapping(address => uint256[]) public offBoardingQueue;
 
     /// @notice gets Ticket of [user] for [train]
     mapping(address => mapping(address => Ticket)) userTrainTicket;
@@ -183,8 +183,9 @@ contract Conductive is
 
     function changeTrainParams(
         address _trainAddress,
-        uint64[2] memory _newParams
-    ) public onlyTrainOwner(_trainAddress) returns (bool) {
+        uint64[2] memory _newParams,
+        uint64[2] memory _newParamsRev
+    ) public onlyTrainOwner(_trainAddress) nonReentrant returns (bool) {
         require(
             _newParams[0] + _newParams[1] > 51337,
             "zero values not allowed"
@@ -197,6 +198,7 @@ contract Conductive is
 
         if (train.config.controlledSpeed) {
             train.config.cycleParams = _newParams;
+            train.config.revenueParams = _newParamsRev;
             getTrainByPool[_trainAddress] = train;
             allowConductorWithdrawal[_trainAddress] = 0;
             emit TrainParamsChanged(_trainAddress, _newParams);
@@ -425,7 +427,7 @@ contract Conductive is
         require(stationsLeft(ticket.nftid) <= 1, "maybe not next staton");
         require(!requestedOffBoarding[ticket.nftid]);
         requestedOffBoarding[ticket.nftid] = true;
-        offBoardingQueue[_trainAddress].push(ticket);
+        offBoardingQueue[_trainAddress].push(ticket.nftid);
 
         success = true;
     }
@@ -530,15 +532,17 @@ contract Conductive is
     //     return allowConductorWithdrawal[_trainAddress] < block.number;
     // }
 
-    function stationsLeft(uint256 _nftID) public view returns (uint64) {
+    function stationsLeft(uint256 _nftID) public view returns (uint256 x) {
         Ticket memory ticket = userTrainTicket[ticketByNftId[_nftID][0]][
             ticketByNftId[_nftID][1]
         ];
-        return
-            uint64(
+        if (ticket.destination < block.number) {
+            x = 0;
+        } else {
+            x =
                 (ticket.destination - block.number) /
-                    (getTrainByPool[ticket.trainAddress].config.cycleParams[0])
-            );
+                getTrainByPool[ticket.trainAddress].config.cycleParams[0];
+        }
     }
 
     function nextStationAt(address _trainAddress)
