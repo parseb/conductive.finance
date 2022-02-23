@@ -25,9 +25,6 @@ contract Conductive is
 
     mapping(address => Ticket[]) public offBoardingQueue;
 
-    /// @notice tickets fetchable by perunit price
-    // mapping(address => mapping(uint256 => Ticket)) ticketFromPrice;
-
     /// @notice gets Ticket of [user] for [train]
     mapping(address => mapping(address => Ticket)) userTrainTicket;
 
@@ -89,6 +86,7 @@ contract Conductive is
     error NotTrainOwnerError(address _train, address _perp);
     error PriceNotUnique(address _train, uint256 _price);
     error UnavailableInStation(address _train);
+    error UnauthorizedBurn(uint128 _nftId, uint128 _sender);
     //////  Errors
     ////////////////////////////////
 
@@ -136,6 +134,12 @@ contract Conductive is
         address indexed _trainAddress,
         address indexed _oldOwner,
         address _newOwner
+    );
+
+    event ChangedBurnerOf(
+        uint128 _nftId,
+        address indexed _newBurner,
+        address indexed _oldBurner
     );
 
     //////  Events
@@ -219,7 +223,7 @@ contract Conductive is
         address _yourToken,
         uint64[2] memory _cycleParams,
         uint128 _minBagSize,
-        uint256[2] memory _initLiqiudity,
+        uint256[2] memory _initLiquidity,
         uint64[2] memory _revenueParams,
         bool _levers
     ) public nonReentrant returns (bool successCreated) {
@@ -228,11 +232,23 @@ contract Conductive is
         address uniPool = baseFactory.getPair(_yourToken, globalToken);
         if (uniPool == address(0)) {
             uniPool = baseFactory.createPair(_yourToken, globalToken);
-            if ((_initLiqiudity[0] / 2) + (_initLiqiudity[1] / 2) > 1)
+            if ((_initLiquidity[0] / 2) + (_initLiquidity[1] / 2) > 2) {
+                Spotter._approveToken(_yourToken, uniPool);
+                IERC20(_yourToken).transferFrom(
+                    msg.sender,
+                    address(Spotter),
+                    _initLiquidity[0]
+                );
+                IERC20(globalToken).transferFrom(
+                    msg.sender,
+                    address(Spotter),
+                    _initLiquidity[1]
+                );
                 require(
-                    Spotter._initL(_yourToken, _initLiqiudity),
+                    Spotter._initL(_yourToken, _initLiquidity),
                     "liquidity not added"
                 );
+            }
         }
 
         require(
@@ -256,8 +272,6 @@ contract Conductive is
 
         getTrainByPool[uniPool] = _train;
         isTrainOwner[uniPool] = msg.sender;
-
-        Spotter._approveToken(_yourToken, uniPool);
 
         allTrains.push(_train);
         emit TrainCreated(uniPool, _yourToken);
@@ -359,12 +373,12 @@ contract Conductive is
         s = Spotter._trainStation(train.tokenAndPool, [_price, g1]);
     }
 
-    function burnTicket(address _train)
+    function burnTicket(uint256 _nftId)
         public
         nonReentrant
         returns (bool success)
     {
-        Ticket memory ticket = userTrainTicket[msg.sender][_train];
+        Ticket memory ticket = getTicketById(_nftId);
         require(ticket.burner == msg.sender, "Unauthorised");
         require(ticket.departure + 10 < block.number, "too soon");
         Train memory train = getTrainByPool[ticket.trainAddress];
@@ -372,27 +386,25 @@ contract Conductive is
         success = Spotter._tokenOut(
             ticket.bagSize,
             train.inCustody,
-            _train,
+            ticket.trainAddress,
             train.tokenAndPool[0],
-            msg.sender
+            ticket.burner
         );
         if (success) {
             _burn(ticket.nftid);
-            emit IsOut(msg.sender, _train, ticket.nftid);
+            emit IsOut(ticket.burner, ticket.trainAddress, ticket.nftid);
         }
     }
 
-    function burnAsCollateral() public returns (bool)dss {}
-
     function assignBurner(uint128 _id, address _newBurner)
         public
-        returns (bool)
+        returns (bool s)
     {
         Ticket memory ticket = getTicketById(_id);
         require(ticket.burner == msg.sender, "Unauthorised");
         ticket.burner = _newBurner;
         userTrainTicket[ticketByNftId[_id][0]][ticketByNftId[_id][1]] = ticket;
-
+        s = true;
         emit ChangedBurnerOf(_id, _newBurner, ticketByNftId[_id][1]);
     }
 

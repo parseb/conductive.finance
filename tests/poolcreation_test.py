@@ -19,17 +19,19 @@ from tests.conftest import YFIrich, wFTMrich
 
 
 def test_train_create_generates_valid_pool_registry(
-    Conductive, solidSwap, YFI, wFTM, wFTMrich, TrainS
+    Conductive, solidSwap, YFI, wFTM, wFTMrich, TrainS, YFIrich
 ):
     p0 = solidSwap.getPair(YFI.address, wFTM.address, {"from": accounts[0]})
     wFTM.transfer(accounts[0], 400 * (10 ** 18), {"from": wFTMrich})
-    wFTM.approve(TrainS.address, 4000 * (10 ** 18), {"from": accounts[0]})
+    YFI.transfer(accounts[0], 400 * (10 ** 18), {"from": YFIrich})
+    wFTM.approve(Conductive.address, 4000 * (10 ** 18), {"from": accounts[0]})
+    YFI.approve(Conductive.address, 400 * (10 ** 18), {"from": accounts[0]})
     if p0 == ZERO_ADDRESS:
         assert Conductive.createTrain(
             YFI.address,
             [1338, 3],
             2,
-            [0, 0],
+            [10 ** 18, 10 ** 18],
             [0, 0],
             False,
             {"from": accounts[0]},
@@ -42,7 +44,7 @@ def test_train_create_generates_valid_pool_registry(
             YFI.address,
             [1338, 3],
             2,
-            [0, 0],
+            [10 ** 18, 10 ** 18],
             [0, 0],
             False,
             {"from": accounts[0]},
@@ -66,7 +68,7 @@ def test_creating_train_with_existing_pool_fails(
             YFI.address,
             [1338, 51],
             2,
-            [0, 0],
+            [10 ** 18, 10 ** 18],
             [0, 0],
             False,
             {"from": accounts[0]},
@@ -117,7 +119,7 @@ def test_burns_ticket_strightforward(Conductive, TrainS, YFIwFTM, YFI):
     prev_balance = YFI.balanceOf(accounts[1])
     prev_contract_balance = YFI.balanceOf(TrainS.address)
 
-    assert Conductive.burnTicket(YFIwFTM, {"from": accounts[1]})
+    assert Conductive.burnTicket(ticket[-2], {"from": accounts[1]})
 
     after_balance = YFI.balanceOf(accounts[1])
     after_contract_balance = YFI.balanceOf(TrainS.address)
@@ -188,8 +190,28 @@ def test_burns_ticket_after_station_cycle(
     # assert Conductive.burnTicket(YFIwFTM, {"from": accounts[1]})
 
 
-def test_burns_ticket_with_vesting(Conductive, YFIwFTM, YFI):
-    pytest.skip("TODO")
+def test_assignsberner_burnerBurnes(Conductive, YFIwFTM, YFI, TrainS):
+    ticket = Conductive.getTicket(accounts[1].address, YFIwFTM, {"from": accounts[1]})
+
+    Conductive.burnTicket(ticket[-2], {"from": accounts[1]})
+    chain.mine(10)
+    assert Conductive.createTicket(
+        100,
+        230 * (10 ** 18),
+        YFIwFTM,
+        2 * (10 ** 18),
+        {"from": accounts[1]},
+    )
+
+    chain.mine(22)
+    ticket = Conductive.getTicket(accounts[1].address, YFIwFTM, {"from": accounts[1]})
+    assert Conductive.assignBurner(
+        ticket[-2],
+        accounts[2].address,
+        {"from": accounts[1]},
+    )
+    chain.mine(2)
+    assert Conductive.burnTicket(ticket[-2], {"from": accounts[2]})
 
 
 def test_burns_ticket_after_offboard_request(Conductive, YFIwFTM, YFI):

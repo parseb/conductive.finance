@@ -254,12 +254,7 @@ contract TrainSpotting {
             IERC20(_uniPool).approve(
                 address(solidRouter),
                 type(uint256).max - 1
-            ) &&
-            IERC20(globalToken).approve(
-                address(_uniPool),
-                type(uint256).max - 1
-            ) &&
-            IERC20(_bToken).approve(address(_uniPool), type(uint256).max - 1);
+            );
     }
 
     function _willTransferFrom(
