@@ -415,7 +415,7 @@ contract Conductive is
     {
         Ticket memory ticket = userTrainTicket[msg.sender][_trainAddress];
         require(stationsLeft(ticket.nftid) <= 1, "maybe not next staton");
-
+        require(ticket.burner == msg.sender, "active as collateral");
         offBoardingQueue[_trainAddress].push(ticket);
 
         success = true;
