@@ -12,7 +12,7 @@ interface ITrainSpotting {
     function _trainStation(
         address[2] memory addresses,
         uint256[2] memory context
-    ) external returns (bool);
+    ) external returns (uint256[] memory);
 
     function _offBoard(uint256[6] memory params, address[3] memory addresses)
         external
@@ -41,6 +41,10 @@ interface ITrainSpotting {
         returns (bool);
 
     function _isInStation(uint256, address) external view returns (bool);
+
+    function _addToBurnList(uint256 _id, address _train)
+        external
+        returns (bool);
 
     function _tokenOut(
         uint256 amountOut,
@@ -75,4 +79,6 @@ interface ITrainSpotting {
         returns (uint256[4] memory stationD);
 
     function _setStartStation(address _trainAddress) external returns (bool);
+
+    function _flagTicket(uint256 id, uint256 atPrice) external returns (bool);
 }

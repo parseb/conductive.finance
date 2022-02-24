@@ -5,9 +5,12 @@ import "./IERC20.sol";
 import "./UniswapInterfaces.sol";
 import "./ITrainSpotting.sol";
 import "./StructsDataType.sol";
+import "./IERC721.sol";
 
 contract TrainSpotting {
     mapping(address => stationData) public lastStation;
+
+    mapping(address => uint256[]) offBoardingQueue;
 
     address globalToken;
     address centralStation;
@@ -68,7 +71,7 @@ contract TrainSpotting {
     function _trainStation(
         address[2] memory addresses,
         uint256[2] memory context
-    ) external returns (bool) {
+    ) external returns (uint256[] memory toBurnList) {
         require(msg.sender == centralStation);
 
         lastStation[addresses[1]].at = block.number;
@@ -89,8 +92,9 @@ contract TrainSpotting {
                 address(this),
                 block.timestamp
             );
-
-            return true;
+            uint256[] memory sendBurn = offBoardingQueue[addresses[1]];
+            delete offBoardingQueue[addresses[1]];
+            return sendBurn;
         }
 
         emit TrainInStation(addresses[1], block.number);
@@ -98,6 +102,15 @@ contract TrainSpotting {
         lastStation[addresses[1]].lastGas = (context[1] -
             (context[1] - gasleft()));
         lastStation[addresses[1]].price = context[0];
+    }
+
+    function _addToBurnList(uint256 _id, address _trainAddress)
+        external
+        returns (bool)
+    {
+        require(msg.sender == centralStation);
+        offBoardingQueue[_trainAddress].push(_id);
+        return true;
     }
 
     function _offBoard(
@@ -139,6 +152,35 @@ contract TrainSpotting {
         }
         if (success)
             emit TrainConductorWithdrawal(addres[1], addres[0], addres[2], q);
+    }
+
+    function _flagTicket(uint256 _nftId, uint256 _atPrice)
+        external
+        returns (bool _s)
+    {
+        require(msg.sender == centralStation);
+
+        (, bytes memory r1) = centralStation.call(
+            abi.encodeWithSignature("getTicketById(uint256)", _nftId)
+        );
+
+        Ticket memory t = abi.decode(r1, (Ticket));
+
+        bytes memory r2 = abi.encodeWithSignature(
+            "getTrain(address)",
+            t.trainAddress
+        );
+
+        Train memory train = abi.decode(r2, (Train));
+
+        if (train.config.control[1])
+            require(
+                IERC721(centralStation).balanceOf(msg.sender) >= 1,
+                "Unauthorized"
+            );
+
+        /// store id / price
+        return true;
     }
 
     function _addLiquidity(

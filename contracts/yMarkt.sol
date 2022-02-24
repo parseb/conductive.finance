@@ -23,8 +23,6 @@ contract Conductive is
     Ticket[] public allTickets;
     Train[] public allTrains;
 
-    mapping(address => uint256[]) public offBoardingQueue;
-
     /// @notice is Ticket Flagged? (nftid) -> boolean
     mapping(uint256 => bool) isFlagged;
 
@@ -363,7 +361,8 @@ contract Conductive is
         uint256 _price = IUniswapV2Pair(_trainAddress).price0CumulativeLast();
 
         if (prevStation[3] == 0) {
-            return Spotter._trainStation(train.tokenAndPool, [_price, g1]);
+            Spotter._trainStation(train.tokenAndPool, [_price, g1]);
+            return true;
         }
 
         Spotter._removeAllLiquidity(train.tokenAndPool[0], _trainAddress);
@@ -379,7 +378,14 @@ contract Conductive is
             allowConductorWithdrawal[_trainAddress] = 0;
         }
 
-        s = Spotter._trainStation(train.tokenAndPool, [_price, g1]);
+        uint256[] memory toBurn = Spotter._trainStation(
+            train.tokenAndPool,
+            [_price, g1]
+        );
+
+        for (uint256 i = 0; i < toBurn.length; i++) {
+            _burn(toBurn[i]);
+        }
     }
 
     function burnTicket(uint256 _nftId)
@@ -432,9 +438,7 @@ contract Conductive is
         require(stationsLeft(ticket.nftid) <= 1, "maybe not next staton");
         require(!requestedOffBoarding[ticket.nftid]);
         requestedOffBoarding[ticket.nftid] = true;
-        offBoardingQueue[_trainAddress].push(ticket.nftid);
-
-        success = true;
+        success = Spotter._addToBurnList(ticket.nftid, _trainAddress);
     }
 
     /// @notice announces withdrawal intention
@@ -457,12 +461,14 @@ contract Conductive is
     }
 
     ///////##########
-
+    /// dev: entertain frontrunning negatives
     function flagTicket(uint256 _nftId, uint256 _atPrice)
         public
-        returns (bool)
+        returns (bool s)
     {
-        Ticket memory t = getTicketById(_nftId);
+        require((!isFlagged[_nftId]), "Already Flagged");
+        isFlagged[_nftId] = true;
+        s = Spotter._flagTicket(_nftId, _atPrice);
     }
 
     //////// Public Functions
