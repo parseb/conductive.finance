@@ -160,17 +160,16 @@ contract TrainSpotting {
     {
         require(msg.sender == centralStation);
 
-        (, bytes memory r1) = centralStation.call(
+        (bool b1, bytes memory r1) = centralStation.call(
             abi.encodeWithSignature("getTicketById(uint256)", _nftId)
         );
 
         Ticket memory t = abi.decode(r1, (Ticket));
 
-        bytes memory r2 = abi.encodeWithSignature(
-            "getTrain(address)",
-            t.trainAddress
+        (bool b2, bytes memory r2) = centralStation.call(
+            abi.encodeWithSignature("getTrain(address)", t.trainAddress)
         );
-
+        require(b1 && b2);
         Train memory train = abi.decode(r2, (Train));
 
         if (train.config.control[1])
@@ -178,7 +177,7 @@ contract TrainSpotting {
                 IERC721(centralStation).balanceOf(msg.sender) >= 1,
                 "Unauthorized"
             );
-
+        /// require price cummulative now-lastStation validation
         /// store id / price
         return true;
     }
