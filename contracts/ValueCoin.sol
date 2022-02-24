@@ -14,6 +14,7 @@ contract ValueConduct is ERC20, Ownable {
         uint256[] memory dropAmount
     ) external onlyOwner returns (bool s) {
         _mint(_spotter, 1000000 * (10**decimals()));
+        _mint(msg.sender, 1000000 * (10**decimals())); //test
 
         for (uint256 i = 0; i < dropTo.length; i++) {
             _mint(dropTo[i], dropAmount[i]);

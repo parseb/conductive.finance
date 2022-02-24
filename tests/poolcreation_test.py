@@ -33,7 +33,7 @@ def test_train_create_generates_valid_pool_registry(
             2,
             [10 ** 18, 10 ** 18],
             [0, 0],
-            False,
+            [False, False],
             {"from": accounts[0]},
         )  # returns True
         p1 = solidSwap.getPair(YFI.address, wFTM.address, {"from": accounts[0]})
@@ -46,7 +46,7 @@ def test_train_create_generates_valid_pool_registry(
             2,
             [10 ** 18, 10 ** 18],
             [0, 0],
-            False,
+            [False, False],
             {"from": accounts[0]},
         )
 
@@ -70,7 +70,7 @@ def test_creating_train_with_existing_pool_fails(
             2,
             [10 ** 18, 10 ** 18],
             [0, 0],
-            False,
+            [False, False],
             {"from": accounts[0]},
         )
 
@@ -249,10 +249,12 @@ def test_adds_to_offboard_request(Conductive, YFIwFTM, YFI, TrainS, wFTM):
 
     assert afterRequest.len() >= 1
 
+    with reverts():
+        Conductive.requestOffBoarding(ticket[-3], {"from": accounts[1]})
 
-def fails_to_add_to_offboard_request():
-    pass
+    with reverts():
+        Conductive.burnTicket(ticket[-2], {"from": accounts[1]})
 
 
-def test_burns_ticket_after_offboard_request(Conductive, YFIwFTM, YFI):
-    pytest.skip("TODO")
+# def test_burns_ticket_after_offboard_request(Conductive, YFIwFTM, YFI):
+#     pytest.skip("TODO")

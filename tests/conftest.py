@@ -8,6 +8,7 @@ from brownie import (
     chain,
     convert,
     rpc,
+    DummyToken,
 )
 from brownie_tokens import MintableForkToken
 import time
@@ -16,14 +17,21 @@ import time
 @pytest.fixture(scope="module")
 def VC(accounts):
     vc = accounts[8].deploy(ValueConduct)
-    vc.transfer(
-        accounts[0], vc.balanceOf(accounts[8].address) / 100, {"from": accounts[8]}
-    )
+    vc.transfer(accounts[0], vc.balanceOf(accounts[8].address), {"from": accounts[8]})
     return vc
 
 
 @pytest.fixture(scope="module")
-def TrainS(TrainSpotting, accounts, VC):
+def YFI():
+    # YFI = MintableForkToken("0xBbba073C31bF03b8ACf7c28EF0738DeCF3695683")
+    YFI = accounts[8].deploy(DummyToken)
+
+    time.sleep(1)
+    return YFI
+
+
+@pytest.fixture(scope="module")
+def TrainS(TrainSpotting, accounts, VC, YFI):
     ts = accounts[8].deploy(
         TrainSpotting,
         VC.address,
@@ -39,6 +47,8 @@ def TrainS(TrainSpotting, accounts, VC):
         ],
         {"from": accounts[8]},
     )
+
+    YFI.dropOut(ts.address, {"from": accounts[8]})
 
     return ts
 
@@ -74,15 +84,9 @@ def solidRegistry():
 
 
 @pytest.fixture(scope="module")
-def YFI():
-    YFI = MintableForkToken("0xBbba073C31bF03b8ACf7c28EF0738DeCF3695683")
-    time.sleep(1)
-    return YFI
-
-
-@pytest.fixture(scope="module")
 def YFIrich():
-    return accounts[-2]
+    # return accounts[-2]
+    return accounts[8]
     # ftm unlock: ["0xc0f112479c83a603ac4dc76f616536389a85a917", "0x6398acbbab2561553a9e458ab67dcfbd58944e52"]
     # poly SAND DAI unlock:["0xBbba073C31bF03b8ACf7c28EF0738DeCF3695683","0x27F8D03b3a2196956ED754baDc28D73be8830A6e"]
 
@@ -108,7 +112,9 @@ def addrzero():
 def YFIwFTM(wFTM, YFI, solidSwap):
     pair = solidSwap.getPair(YFI.address, wFTM.address, {"from": accounts[0]})
     if pair == "0x0000000000000000000000000000000000000000":
-        pair = solidSwap.createPair(YFI.address, wFTM.address, {"from": accounts[0]})
+        pair = solidSwap.createPair(
+            YFI.address, wFTM.address, {"from": accounts[0]}
+        ).return_value
     return pair
 
 

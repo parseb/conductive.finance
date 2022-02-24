@@ -8,16 +8,11 @@ struct stationData {
     uint256 lastGas; //last gas for station execution cycle
 }
 
-// struct operators {
-//     address buybackToken; //buyback token contract address
-//     address uniPool; //address of the uniswap pair contract
-// }
-
 struct configdata {
     uint64[2] cycleParams; //[cycleFreq(distance between stations), minDistance(min nr of stations for ticket)
     uint64[2] revenueParams; //[miners, trainowner]
     uint128 minBagSize; //min bag size (min stake for ticket)
-    bool controlledSpeed; //if true, facilitate speed management (can cycle params be changed?)
+    bool[2] control; // [configdataCanBeChanged, memberFlaggingOnly]
 }
 
 struct Train {

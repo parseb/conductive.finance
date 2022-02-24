@@ -25,6 +25,9 @@ contract Conductive is
 
     mapping(address => uint256[]) public offBoardingQueue;
 
+    /// @notice is Ticket Flagged? (nftid) -> boolean
+    mapping(uint256 => bool) isFlagged;
+
     /// @notice gets Ticket of [user] for [train]
     mapping(address => mapping(address => Ticket)) userTrainTicket;
 
@@ -184,7 +187,8 @@ contract Conductive is
     function changeTrainParams(
         address _trainAddress,
         uint64[2] memory _newParams,
-        uint64[2] memory _newParamsRev
+        uint64[2] memory _newParamsRev,
+        bool[2] memory _control
     ) public onlyTrainOwner(_trainAddress) nonReentrant returns (bool) {
         require(
             _newParams[0] + _newParams[1] > 51337,
@@ -196,9 +200,10 @@ contract Conductive is
         if (train.tokenAndPool[0] == address(0))
             revert TrainNotFound(_trainAddress);
 
-        if (train.config.controlledSpeed) {
+        if (train.config.control[0]) {
             train.config.cycleParams = _newParams;
             train.config.revenueParams = _newParamsRev;
+            train.config.control = _control;
             getTrainByPool[_trainAddress] = train;
             allowConductorWithdrawal[_trainAddress] = 0;
             emit TrainParamsChanged(_trainAddress, _newParams);
@@ -230,7 +235,7 @@ contract Conductive is
         uint128 _minBagSize,
         uint256[2] memory _initLiquidity,
         uint64[2] memory _revenueParams,
-        bool _levers
+        bool[2] memory _levers
     ) public nonReentrant returns (bool successCreated) {
         require((_cycleParams[0] > 1337) && (_cycleParams[1] > 2)); //min stations/day ticket
 
@@ -271,7 +276,7 @@ contract Conductive is
                 cycleParams: _cycleParams,
                 revenueParams: _revenueParams,
                 minBagSize: _minBagSize,
-                controlledSpeed: _levers
+                control: _levers
             })
         });
 
@@ -452,6 +457,13 @@ contract Conductive is
     }
 
     ///////##########
+
+    function flagTicket(uint256 _nftId, uint256 _atPrice)
+        public
+        returns (bool)
+    {
+        Ticket memory t = getTicketById(_nftId);
+    }
 
     //////// Public Functions
     /////////////////////////////////
