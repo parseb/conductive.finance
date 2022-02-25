@@ -20,7 +20,7 @@ contract Conductive is
     ReentrancyGuard
 {
     uint256 clicker;
-    Ticket[] public allTickets;
+    //Ticket[] public allTickets;
     Train[] public allTrains;
 
     /// @notice is Ticket Flagged? (nftid) -> boolean
@@ -338,7 +338,7 @@ contract Conductive is
         userTrainTicket[msg.sender][_trainAddress] = ticket;
         ticketByNftId[clicker] = [msg.sender, _trainAddress];
 
-        allTickets.push(ticket);
+        //allTickets.push(ticket);
         getTrainByPool[_trainAddress].passengers += 1;
         getTrainByPool[_trainAddress].inCustody += _bagSize;
         getTrainByPool[_trainAddress].yieldSharesTotal +=
@@ -356,16 +356,10 @@ contract Conductive is
         nonReentrant
         returns (bool s)
     {
-        uint256 g1 = gasleft();
         require(isInStation(_trainAddress), "Train none or moving");
-        uint256[4] memory prevStation = Spotter._getLastStation(_trainAddress);
-        require(prevStation[0] != block.number, "Departing");
+        require(Spotter._ensureNoDoubleEntry(_trainAddress), "Departing");
 
         Train memory train = getTrainByPool[_trainAddress];
-
-        if (prevStation[3] == 0) {
-            return true;
-        }
 
         Spotter._removeAllLiquidity(train.tokenAndPool[0], _trainAddress);
 
@@ -380,7 +374,7 @@ contract Conductive is
             allowConductorWithdrawal[_trainAddress] = 0;
         }
 
-        uint256[] memory toBurn = Spotter._trainStation(train.tokenAndPool, g1);
+        uint256[] memory toBurn = Spotter._trainStation(train.tokenAndPool);
 
         for (uint256 i = 0; i < toBurn.length; i++) {
             _burn(toBurn[i]);

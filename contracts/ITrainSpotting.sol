@@ -9,7 +9,7 @@ interface ITrainSpotting {
         address uniRouter
     ) external returns (address, address);
 
-    function _trainStation(address[2] memory addresses, uint256 gas)
+    function _trainStation(address[2] memory addresses)
         external
         returns (uint256[] memory);
 
@@ -71,6 +71,8 @@ interface ITrainSpotting {
     function _initL(address yourToken, uint256[2] memory ammounts)
         external
         returns (bool);
+
+    function _ensureNoDoubleEntry(address train) external returns (bool);
 
     function _getLastStation(address train)
         external

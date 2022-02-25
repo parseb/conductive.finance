@@ -5,7 +5,7 @@ struct stationData {
     uint256 at; //last station ocurred at block
     uint256 price; //price at last station
     uint256 ownedQty; //owned quantity (withdrawable by conductor / ! inCustody)
-    uint256 lastGas; //last gas for station execution cycle
+    uint256 timestamp; //for intrastation twap
 }
 
 struct configdata {

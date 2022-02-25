@@ -318,6 +318,10 @@ contract TrainSpotting {
         //trainPrice0Time
     }
 
+    function _ensureNoDoubleEntry(address _trainA) external returns (bool) {
+        if (lastStation[_trainA].at < block.number) return true;
+    }
+
     function _getLastStation(address _train)
         external
         view
@@ -327,7 +331,7 @@ contract TrainSpotting {
             lastStation[_train].at,
             lastStation[_train].price,
             lastStation[_train].ownedQty,
-            lastStation[_train].lastGas
+            lastStation[_train].timestamp
         ];
     }
 
