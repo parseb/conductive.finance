@@ -9,10 +9,9 @@ interface ITrainSpotting {
         address uniRouter
     ) external returns (address, address);
 
-    function _trainStation(
-        address[2] memory addresses,
-        uint256[2] memory context
-    ) external returns (uint256[] memory);
+    function _trainStation(address[2] memory addresses, uint256 gas)
+        external
+        returns (uint256[] memory);
 
     function _offBoard(uint256[6] memory params, address[3] memory addresses)
         external
@@ -78,7 +77,9 @@ interface ITrainSpotting {
         view
         returns (uint256[4] memory stationD);
 
-    function _setStartStation(address _trainAddress) external returns (bool);
+    function _setStartStation(address _trainAddress, address _yourToken)
+        external
+        returns (bool);
 
     function _flagTicket(uint256 id, uint256 atPrice) external returns (bool);
 }

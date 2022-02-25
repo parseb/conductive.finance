@@ -88,7 +88,7 @@ contract Conductive is
     error IssueOnDeposit(uint256 amount, address token);
     error MinDepositRequired(uint256 required, uint256 provided);
     error NotTrainOwnerError(address _train, address _perp);
-    error PriceNotUnique(address _train, uint256 _price);
+
     error UnavailableInStation(address _train);
     error UnauthorizedBurn(uint128 _nftId, uint128 _sender);
     //////  Errors
@@ -283,7 +283,7 @@ contract Conductive is
 
         allTrains.push(_train);
         emit TrainCreated(uniPool, _yourToken);
-        successCreated = Spotter._setStartStation(uniPool);
+        successCreated = Spotter._setStartStation(uniPool, _yourToken);
     }
 
     function createTicket(
@@ -351,17 +351,19 @@ contract Conductive is
         emit TicketCreated(msg.sender, _trainAddress, ticket.perUnit);
     }
 
-    function trainStation(address _trainAddress) public returns (bool s) {
+    function trainStation(address _trainAddress)
+        public
+        nonReentrant
+        returns (bool s)
+    {
         uint256 g1 = gasleft();
         require(isInStation(_trainAddress), "Train none or moving");
         uint256[4] memory prevStation = Spotter._getLastStation(_trainAddress);
         require(prevStation[0] != block.number, "Departing");
 
         Train memory train = getTrainByPool[_trainAddress];
-        uint256 _price = IUniswapV2Pair(_trainAddress).price0CumulativeLast();
 
         if (prevStation[3] == 0) {
-            Spotter._trainStation(train.tokenAndPool, [_price, g1]);
             return true;
         }
 
@@ -378,10 +380,7 @@ contract Conductive is
             allowConductorWithdrawal[_trainAddress] = 0;
         }
 
-        uint256[] memory toBurn = Spotter._trainStation(
-            train.tokenAndPool,
-            [_price, g1]
-        );
+        uint256[] memory toBurn = Spotter._trainStation(train.tokenAndPool, g1);
 
         for (uint256 i = 0; i < toBurn.length; i++) {
             _burn(toBurn[i]);

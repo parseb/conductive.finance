@@ -7,10 +7,18 @@ import "./ITrainSpotting.sol";
 import "./StructsDataType.sol";
 import "./IERC721.sol";
 
+//import "./UniswapV2OracleLibrary.sol";
+
 contract TrainSpotting {
     mapping(address => stationData) public lastStation;
 
     mapping(address => uint256[]) offBoardingQueue;
+
+    /// ticket Id -> price at flag
+    mapping(uint256 => uint256) flags;
+
+    // price0CumulativeLast, timestampLast
+    mapping(address => uint256[2]) trainPrice0Time;
 
     address globalToken;
     address centralStation;
@@ -68,40 +76,29 @@ contract TrainSpotting {
         address indexed _centralStation
     );
 
-    function _trainStation(
-        address[2] memory addresses,
-        uint256[2] memory context
-    ) external returns (uint256[] memory toBurnList) {
+    function _trainStation(address[2] memory addresses)
+        external
+        returns (uint256[] memory toBurnList)
+    {
         require(msg.sender == centralStation);
 
         lastStation[addresses[1]].at = block.number;
 
-        if (lastStation[addresses[1]].lastGas == 0) {
-            lastStation[addresses[1]].price = context[0];
-
-            lastStation[addresses[1]].lastGas = context[1] - gasleft();
-            if (IERC20(addresses[0]).balanceOf(address(this)) > 0)
-                lastStation[addresses[1]].lastGas = 0;
-            solidRouter.addLiquidity(
-                addresses[0],
-                globalToken,
-                IERC20(addresses[0]).balanceOf(address(this)) / 2,
-                IERC20(globalToken).balanceOf(address(this)) / 2,
-                0,
-                0,
-                address(this),
-                block.timestamp
-            );
-            uint256[] memory sendBurn = offBoardingQueue[addresses[1]];
-            delete offBoardingQueue[addresses[1]];
-            return sendBurn;
-        }
-
         emit TrainInStation(addresses[1], block.number);
 
-        lastStation[addresses[1]].lastGas = (context[1] -
-            (context[1] - gasleft()));
-        lastStation[addresses[1]].price = context[0];
+        lastStation[addresses[1]].price = getPrice(addresses[0], addresses[1]);
+    }
+
+    function getPrice(address _bToken, address _train)
+        private
+        returns (uint256 price)
+    {
+        IUniswapV2Pair pair = IUniswapV2Pair(_train);
+        if (_bToken == pair.token0()) {
+            price = pair.price0CumulativeLast();
+        } else {
+            price = pair.price1CumulativeLast();
+        }
     }
 
     function _addToBurnList(uint256 _id, address _trainAddress)
@@ -169,14 +166,16 @@ contract TrainSpotting {
         (bool b2, bytes memory r2) = centralStation.call(
             abi.encodeWithSignature("getTrain(address)", t.trainAddress)
         );
-        require(b1 && b2);
         Train memory train = abi.decode(r2, (Train));
+
+        require(t.trainAddress == train.tokenAndPool[1]);
 
         if (train.config.control[1])
             require(
                 IERC721(centralStation).balanceOf(msg.sender) >= 1,
                 "Unauthorized"
             );
+
         /// require price cummulative now-lastStation validation
         /// store id / price
         return true;
@@ -308,10 +307,15 @@ contract TrainSpotting {
         success = IERC20(_token).transferFrom(_from, _to, _amount);
     }
 
-    function _setStartStation(address _trainAddress) external returns (bool) {
+    function _setStartStation(address _trainAddress, address _bToken)
+        external
+        returns (bool)
+    {
         require(msg.sender == centralStation);
         lastStation[_trainAddress].at = block.number;
-        return true;
+        lastStation[_trainAddress].price = getPrice(_bToken, _trainAddress);
+
+        //trainPrice0Time
     }
 
     function _getLastStation(address _train)
