@@ -12,10 +12,11 @@ import "./IERC721.sol";
 contract TrainSpotting {
     mapping(address => stationData) public lastStation;
 
+    /// train -> ids
     mapping(address => uint256[]) offBoardingQueue;
-
+    mapping(address => uint256[]) flaggedQueue;
     /// ticket Id -> price at flag
-    mapping(uint256 => uint256) flags;
+    mapping(uint256 => uint256) flaggedAt;
 
     // price0CumulativeLast, timestampLast
     mapping(address => uint256[2]) trainPrice0Time;
@@ -84,16 +85,32 @@ contract TrainSpotting {
 
         lastStation[addresses[1]].at = block.number;
 
+        ////////////////////////////
+
+        ///offboard
+
+        ///check and execute flags
+
+        ///addLiquidity
+
+        /// update state & return burn list
+        ///////////////////////
         emit TrainInStation(addresses[1], block.number);
 
-        lastStation[addresses[1]].price = getPrice(addresses[0], addresses[1]);
+        lastStation[addresses[1]].price = getCummulativePrice(
+            addresses[0],
+            addresses[1]
+        );
+        lastStation[addresses[1]].timestamp = block.timestamp;
+        // transfer pricipal to burner
     }
 
-    function getPrice(address _bToken, address _train)
+    function getCummulativePrice(address _bToken, address _train)
         private
         returns (uint256 price)
     {
         IUniswapV2Pair pair = IUniswapV2Pair(_train);
+        pair.sync();
         if (_bToken == pair.token0()) {
             price = pair.price0CumulativeLast();
         } else {
@@ -101,7 +118,14 @@ contract TrainSpotting {
         }
     }
 
-    function _addToBurnList(uint256 _id, address _trainAddress)
+    function getPrice(address _bT, address _t) private returns (uint256 price) {
+        uint256 cummulativeNow = getCummulativePrice(_bT, _t);
+        price =
+            (cummulativeNow - lastStation[_t].price) /
+            (block.timestamp - lastStation[_t].timestamp);
+    }
+
+    function _addToOffboardingList(uint256 _id, address _trainAddress)
         external
         returns (bool)
     {
@@ -156,6 +180,7 @@ contract TrainSpotting {
         returns (bool _s)
     {
         require(msg.sender == centralStation);
+        require(flaggedAt[_nftId] == 0, "Already Flagged");
 
         (bool b1, bytes memory r1) = centralStation.call(
             abi.encodeWithSignature("getTicketById(uint256)", _nftId)
@@ -166,9 +191,11 @@ contract TrainSpotting {
         (bool b2, bytes memory r2) = centralStation.call(
             abi.encodeWithSignature("getTrain(address)", t.trainAddress)
         );
+        require(t.perUnit < _atPrice, "under");
+
         Train memory train = abi.decode(r2, (Train));
 
-        require(t.trainAddress == train.tokenAndPool[1]);
+        //require(t.trainAddress == train.tokenAndPool[1]);
 
         if (train.config.control[1])
             require(
@@ -176,8 +203,17 @@ contract TrainSpotting {
                 "Unauthorized"
             );
 
-        /// require price cummulative now-lastStation validation
-        /// store id / price
+        uint256 priceNow = getPrice(
+            train.tokenAndPool[0],
+            train.tokenAndPool[1]
+        );
+        require(
+            (priceNow > t.perUnit) && (priceNow >= _atPrice),
+            "Invalid TWPrice"
+        );
+        flaggedAt[_nftId] = _atPrice;
+        flaggedQueue[t.trainAddress].push(_nftId);
+
         return true;
     }
 
@@ -313,8 +349,11 @@ contract TrainSpotting {
     {
         require(msg.sender == centralStation);
         lastStation[_trainAddress].at = block.number;
-        lastStation[_trainAddress].price = getPrice(_bToken, _trainAddress);
-
+        lastStation[_trainAddress].price = getCummulativePrice(
+            _bToken,
+            _trainAddress
+        );
+        lastStation[_trainAddress].timestamp = block.timestamp;
         //trainPrice0Time
     }
 

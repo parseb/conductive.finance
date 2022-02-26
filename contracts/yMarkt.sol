@@ -23,9 +23,6 @@ contract Conductive is
     //Ticket[] public allTickets;
     Train[] public allTrains;
 
-    /// @notice is Ticket Flagged? (nftid) -> boolean
-    mapping(uint256 => bool) isFlagged;
-
     /// @notice gets Ticket of [user] for [train]
     mapping(address => mapping(address => Ticket)) userTrainTicket;
 
@@ -431,7 +428,7 @@ contract Conductive is
         require(stationsLeft(ticket.nftid) <= 1, "maybe not next staton");
         require(!requestedOffBoarding[ticket.nftid]);
         requestedOffBoarding[ticket.nftid] = true;
-        success = Spotter._addToBurnList(ticket.nftid, _trainAddress);
+        success = Spotter._addToOffboardingList(ticket.nftid, _trainAddress);
     }
 
     /// @notice announces withdrawal intention
@@ -459,8 +456,7 @@ contract Conductive is
         public
         returns (bool s)
     {
-        require((!isFlagged[_nftId]), "Already Flagged");
-        isFlagged[_nftId] = true;
+        require(!requestedOffBoarding[_nftId], "Offboarding status");
         s = Spotter._flagTicket(_nftId, _atPrice);
     }
 

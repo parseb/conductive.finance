@@ -41,7 +41,7 @@ interface ITrainSpotting {
 
     function _isInStation(uint256, address) external view returns (bool);
 
-    function _addToBurnList(uint256 _id, address _train)
+    function _addToOffboardingList(uint256 _id, address _train)
         external
         returns (bool);
 
