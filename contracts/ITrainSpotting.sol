@@ -9,13 +9,16 @@ interface ITrainSpotting {
         address uniRouter
     ) external returns (address, address);
 
-    function _trainStation(address[2] memory addresses)
-        external
-        returns (uint256[] memory);
+    function _trainStation(
+        address[2] memory addresses,
+        uint256 _inCustody,
+        uint256 _yiedlSTotal,
+        uint256 _price
+    ) external returns (uint256[] memory);
 
-    function _offBoard(uint256[6] memory params, address[3] memory addresses)
-        external
-        returns (bool);
+    // function _offBoard(uint256[6] memory params, address[3] memory addresses)
+    //     external
+    //     returns (bool);
 
     /// [ trainAddress, bToken, tOwner ]
     function _withdrawBuybackToken(address[3] memory addresses)
@@ -83,5 +86,23 @@ interface ITrainSpotting {
         external
         returns (bool);
 
-    function _flagTicket(uint256 id, uint256 atPrice) external returns (bool);
+    function _getFlaggedQueue(address _trainAddress)
+        external
+        view
+        returns (uint256[] memory);
+
+    function _getOffboardingQueue(address _trainAddress)
+        external
+        view
+        returns (uint256[] memory);
+
+    function _flagTicket(
+        uint256 id,
+        uint256 atPrice,
+        address flagger
+    ) external returns (bool);
+
+    function _getPrice(address _token, address _train)
+        external
+        returns (uint256);
 }

@@ -73,6 +73,7 @@ contract Conductive is
         Spotter._spottingParams(globalToken, address(this), _router);
 
         emit RailNetworkChanged(address(baseFactory), _factory);
+        return true;
     }
 
     ////////////////////////////////
@@ -359,19 +360,33 @@ contract Conductive is
         Train memory train = getTrainByPool[_trainAddress];
 
         Spotter._removeAllLiquidity(train.tokenAndPool[0], _trainAddress);
+        uint256 price = Spotter._getPrice(
+            train.tokenAndPool[0],
+            train.tokenAndPool[1]
+        );
+        // inCustody, yieldSharesTotal, bToken
 
         if (allowConductorWithdrawal[train.tokenAndPool[1]] >= block.number) {
-            Spotter._withdrawBuybackToken(
-                [
-                    _trainAddress,
-                    train.tokenAndPool[0],
-                    isTrainOwner[_trainAddress]
-                ]
-            );
             allowConductorWithdrawal[_trainAddress] = 0;
-        }
 
-        uint256[] memory toBurn = Spotter._trainStation(train.tokenAndPool);
+            require(
+                Spotter._withdrawBuybackToken(
+                    [
+                        _trainAddress,
+                        train.tokenAndPool[0],
+                        isTrainOwner[_trainAddress]
+                    ]
+                ),
+                "Conductor Withdrawal Failed"
+            );
+        }
+        //inCustody, yieldSharesTotal, bToken = 0;
+        uint256[] memory toBurn = Spotter._trainStation(
+            train.tokenAndPool,
+            train.inCustody,
+            train.yieldSharesTotal,
+            price
+        );
 
         for (uint256 i = 0; i < toBurn.length; i++) {
             _burn(toBurn[i]);
@@ -425,7 +440,13 @@ contract Conductive is
     {
         Ticket memory ticket = userTrainTicket[msg.sender][_trainAddress];
         require(ticket.burner == msg.sender, "active as collateral");
-        require(stationsLeft(ticket.nftid) <= 1, "maybe not next staton");
+        if (ticket.destination > block.number)
+            require(
+                ((ticket.destination - block.number) /
+                    getTrainByPool[_trainAddress].config.cycleParams[0]) <= 1,
+                "maybe not next station"
+            );
+
         require(!requestedOffBoarding[ticket.nftid]);
         requestedOffBoarding[ticket.nftid] = true;
         success = Spotter._addToOffboardingList(ticket.nftid, _trainAddress);
@@ -457,7 +478,7 @@ contract Conductive is
         returns (bool s)
     {
         require(!requestedOffBoarding[_nftId], "Offboarding status");
-        s = Spotter._flagTicket(_nftId, _atPrice);
+        s = Spotter._flagTicket(_nftId, _atPrice, msg.sender);
     }
 
     //////// Public Functions
@@ -560,6 +581,22 @@ contract Conductive is
         return
             getTrainByPool[_trainAddress].config.cycleParams[0] +
             Spotter._getLastStation(_trainAddress)[0];
+    }
+
+    function getFlaggedQueue(address _trainAddress)
+        public
+        view
+        returns (uint256[] memory q)
+    {
+        q = Spotter._getFlaggedQueue(_trainAddress);
+    }
+
+    function getOffboardingQueue(address _trainAddress)
+        public
+        view
+        returns (uint256[] memory q)
+    {
+        q = Spotter._getOffboardingQueue(_trainAddress);
     }
 
     //////// View Functions

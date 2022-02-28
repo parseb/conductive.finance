@@ -39,20 +39,32 @@ def test_can_flag_ticket(
     )  # returns True
 
     assert Conductive.createTicket(
-        100,
+        3,
         69,
         YFIwFTM,
         2 * (10 ** 18),
         {"from": accounts[0]},
     )
 
-    ticket = Conductive.getTicket(accounts[0].address, YFIwFTM)
-    assert ticket[-2] > 0
+    chain.mine(1)
 
-    chain.mine(1000)
+    YFI.transfer(accounts[1].address, 123456789123456789000, {"from": accounts[0]})
+    # YFI.approve(Conductive.address, 1234567891234567890000, {"from": accounts[1]})
+    YFI.approve(TrainS.address, 400 * (10 ** 18), {"from": accounts[1]})
+
+    assert Conductive.createTicket(
+        3,
+        69,
+        YFIwFTM,
+        2 * (10 ** 18),
+        {"from": accounts[1]},
+    )
+
+    ticket1 = Conductive.getTicket(accounts[0].address, YFIwFTM)
+    assert ticket1[-2] > 0
 
     with reverts("Invalid TWPrice"):
-        Conductive.flagTicket(ticket[-2], 70, {"from": accounts[6]})
+        Conductive.flagTicket(ticket1[-2], 70, {"from": accounts[6]})
 
     wFTM.approve(solidRegistry.address, 1234567891234567890000, {"from": accounts[0]})
     YFI.approve(solidRegistry.address, 1234567891234567890000, {"from": accounts[0]})
@@ -69,7 +81,7 @@ def test_can_flag_ticket(
         {"from": accounts[0]},
     )
 
-    chain.mine()
+    chain.mine(1)
 
     swaps = solidRegistry.swapExactTokensForTokens(
         12345678912345678,
@@ -79,7 +91,44 @@ def test_can_flag_ticket(
         chain.time() + 10,
         {"from": accounts[0]},
     )
-
     assert swaps.return_value[0] > 1
 
-    assert Conductive.flagTicket(ticket[-2], 70, {"from": accounts[6]})
+    chain.mine(1)
+    inCustody = Conductive.getTrain(YFIwFTM)[2]
+
+    ticket2 = Conductive.getTicket(accounts[1].address, YFIwFTM)
+    inCustody = Conductive.getTrain(YFIwFTM)[2]
+    assert inCustody == (ticket1[2] + ticket2[2])
+    assert ticket2[-2] > ticket1[-2]
+
+    # flags ticket 1
+    assert Conductive.flagTicket(ticket1[-2], 70, {"from": accounts[6]})
+    chain.mine(1)
+
+    with reverts("maybe not next station"):
+        Conductive.requestOffBoarding(YFIwFTM, {"from": accounts[1]})
+
+    # req offboard ticket2
+    nextAt = Conductive.nextStationAt(YFIwFTM)
+    chain.mine(ticket2[0] - chain.height)  # ~1 station
+    Conductive.requestOffBoarding(YFIwFTM, {"from": accounts[1]})
+
+    flagged1 = Conductive.getFlaggedQueue(YFIwFTM)
+    offboarding1 = Conductive.getOffboardingQueue(YFIwFTM)
+
+    nextAt = Conductive.nextStationAt(YFIwFTM)
+    chain.mine(nextAt - chain.height - 1)
+    sLeft = Conductive.stationsLeft(ticket2[-2])
+
+    ### Train Station
+
+    # assert Conductive.trainStation(YFIwFTM)
+    # flagged2 = Conductive.getFlaggedQueue(YFIwFTM)
+    # offboarding2 = Conductive.getOffboardingQueue(YFIwFTM)
+    # assert len(flagged1) > len(flagged2)
+    # assert len(offboarding1) > len(offboarding2)
+    # assert len(flagged2) == len(offboarding2) == 0
+
+
+def test_can_pass():
+    pass
