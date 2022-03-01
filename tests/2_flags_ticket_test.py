@@ -108,6 +108,8 @@ def test_can_flag_ticket(
     with reverts("maybe not next station"):
         Conductive.requestOffBoarding(YFIwFTM, {"from": accounts[1]})
 
+    balanceYFI0 = YFI.balanceOf(TrainS.address)
+
     # req offboard ticket2
     nextAt = Conductive.nextStationAt(YFIwFTM)
     chain.mine(ticket2[0] - chain.height)  # ~1 station
@@ -122,13 +124,51 @@ def test_can_flag_ticket(
 
     ### Train Station
 
-    # assert Conductive.trainStation(YFIwFTM)
-    # flagged2 = Conductive.getFlaggedQueue(YFIwFTM)
-    # offboarding2 = Conductive.getOffboardingQueue(YFIwFTM)
-    # assert len(flagged1) > len(flagged2)
-    # assert len(offboarding1) > len(offboarding2)
-    # assert len(flagged2) == len(offboarding2) == 0
+    assert Conductive.trainStation(YFIwFTM)
+
+    balanceYFI1 = YFI.balanceOf(TrainS.address)
+    flagged2 = Conductive.getFlaggedQueue(YFIwFTM)
+    offboarding2 = Conductive.getOffboardingQueue(YFIwFTM)
+    assert len(flagged1) > len(flagged2)
+    assert len(offboarding1) > len(offboarding2)
+    assert len(flagged2) == len(offboarding2) == 0
 
 
-def test_can_pass():
-    pass
+###copied
+
+
+def test_adds_to_offboard_request(Conductive, YFIwFTM, YFI, TrainS, wFTM):
+
+    train = Conductive.getTrain(YFIwFTM, {"from": accounts[0]})
+
+    assert Conductive.createTicket(
+        100,
+        230 * (10 ** 18),
+        YFIwFTM,
+        2 * (10 ** 18),
+        {"from": accounts[1]},
+    )
+
+    ticket = Conductive.getTicket(accounts[1].address, YFIwFTM, {"from": accounts[1]})
+    nextStationAt = Conductive.nextStationAt(YFIwFTM)
+    chain.mine(10)
+    assert Conductive.stationsLeft(ticket[-2]) >= 1
+
+    with reverts():
+        Conductive.requestOffBoarding(ticket[-3], {"from": accounts[1]})
+
+    stationLeft = Conductive.nextStationAt(ticket[-3])
+    chain.mine(ticket[0] - chain.height)
+    assert Conductive.stationsLeft(ticket[-2]) <= 1
+    chain
+    assert Conductive.requestOffBoarding(ticket[-3], {"from": accounts[1]})
+
+    afterRequest = Conductive.getOffboardingQueue(ticket[-2], 0, {"from": accounts[8]})
+
+    assert afterRequest.len() >= 1
+
+    with reverts():
+        Conductive.requestOffBoarding(ticket[-3], {"from": accounts[1]})
+
+    with reverts():
+        Conductive.burnTicket(ticket[-2], {"from": accounts[1]})

@@ -219,42 +219,5 @@ def test_assignsberner_burnerBurnes(Conductive, YFIwFTM, YFI, TrainS):
     assert Conductive.burnTicket(ticket[-2], {"from": accounts[2]})
 
 
-def test_adds_to_offboard_request(Conductive, YFIwFTM, YFI, TrainS, wFTM):
-
-    train = Conductive.getTrain(YFIwFTM, {"from": accounts[0]})
-
-    assert Conductive.createTicket(
-        100,
-        230 * (10 ** 18),
-        YFIwFTM,
-        2 * (10 ** 18),
-        {"from": accounts[1]},
-    )
-
-    ticket = Conductive.getTicket(accounts[1].address, YFIwFTM, {"from": accounts[1]})
-    nextStationAt = Conductive.nextStationAt(YFIwFTM)
-    chain.mine(10)
-    assert Conductive.stationsLeft(ticket[-2]) >= 1
-
-    with reverts():
-        Conductive.requestOffBoarding(ticket[-3], {"from": accounts[1]})
-
-    stationLeft = Conductive.nextStationAt(ticket[-3])
-    chain.mine(ticket[0] - chain.height)
-    assert Conductive.stationsLeft(ticket[-2]) <= 1
-    chain
-    assert Conductive.requestOffBoarding(ticket[-3], {"from": accounts[1]})
-
-    afterRequest = Conductive.offBoardingQueue(ticket[-3], 0, {"from": accounts[8]})
-
-    assert afterRequest.len() >= 1
-
-    with reverts():
-        Conductive.requestOffBoarding(ticket[-3], {"from": accounts[1]})
-
-    with reverts():
-        Conductive.burnTicket(ticket[-2], {"from": accounts[1]})
-
-
 # def test_burns_ticket_after_offboard_request(Conductive, YFIwFTM, YFI):
 #     pytest.skip("TODO")

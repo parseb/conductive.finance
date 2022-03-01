@@ -212,22 +212,33 @@ contract TrainSpotting {
 
         uint256 shares;
         //@dev sharevalue degradation incentivises predictability
-        uint256 pYield = (IERC20(addr[2]).balanceOf(centralStation) -
-            params[4] -
-            lastStation[addr[2]].ownedQty) / params[5];
+        if (
+            (IERC20(addr[2]).balanceOf(address(this)) -
+                params[4] -
+                lastStation[addr[2]].ownedQty) > params[5]
+        ) {
+            uint256 pYield = (IERC20(addr[2]).balanceOf(address(this)) -
+                params[4] -
+                lastStation[addr[2]].ownedQty) / params[5];
 
-        if (params[0] < block.number) {
-            shares = (params[0] - params[1]) * params[2];
-            success = IERC20(addr[2]).transfer(
-                addr[0],
-                (pYield * shares + params[2])
-            );
+            if (params[0] < block.number) {
+                shares = (params[0] - params[1]) * params[2];
+                success = IERC20(addr[2]).transfer(
+                    addr[0],
+                    (pYield * shares + params[2])
+                );
+            } else {
+                shares = (block.number - params[1]) * params[2];
+                success = IERC20(globalToken).transfer(
+                    addr[0],
+                    ((pYield * shares + params[2]) * params[3])
+                );
+            }
         } else {
-            shares = (block.number - params[1]) * params[2];
-            success = IERC20(globalToken).transfer(
-                addr[0],
-                ((pYield * shares + params[2]) * params[3])
-            );
+            if (params[0] <= block.number)
+                IERC20(addr[2]).transfer(addr[0], params[2]);
+            if (params[0] > block.number)
+                IERC20(globalToken).transfer(addr[0], params[2] * params[3]);
         }
         return success;
     }
@@ -239,9 +250,8 @@ contract TrainSpotting {
         IERC20 token = IERC20(addres[1]);
         uint256 q = lastStation[addres[0]].ownedQty;
 
-        if (q > 0) {
-            success = token.transfer(addres[2], q);
-        }
+        if (q > 0) success = token.transfer(addres[2], q);
+
         if (success)
             emit TrainConductorWithdrawal(addres[1], addres[0], addres[2], q);
         lastStation[addres[0]].ownedQty = 0;
