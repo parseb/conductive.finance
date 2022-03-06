@@ -32,7 +32,6 @@ def test_train_create_generates_valid_pool_registry(
             [1338, 3],
             2,
             [10 ** 18, 10 ** 18],
-            [0, 0],
             [False, False],
             {"from": accounts[0]},
         )  # returns True
@@ -45,7 +44,6 @@ def test_train_create_generates_valid_pool_registry(
             [1338, 3],
             2,
             [10 ** 18, 10 ** 18],
-            [0, 0],
             [False, False],
             {"from": accounts[0]},
         )
@@ -69,7 +67,6 @@ def test_creating_train_with_existing_pool_fails(
             [1338, 51],
             2,
             [10 ** 18, 10 ** 18],
-            [0, 0],
             [False, False],
             {"from": accounts[0]},
         )

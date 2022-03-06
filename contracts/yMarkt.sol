@@ -54,7 +54,7 @@ contract Conductive is
         (, address token) = Spotter._setCentralStation(address(this));
 
         globalToken = token;
-        clicker = 1;
+        clicker = 100;
     }
 
     function updatesEnvironment(
@@ -198,7 +198,6 @@ contract Conductive is
 
         if (train.config.control[0]) {
             train.config.cycleParams = _newParams;
-            train.config.revenueParams = _newParamsRev;
             train.config.control = _control;
             getTrainByPool[_trainAddress] = train;
             allowConductorWithdrawal[_trainAddress] = 0;
@@ -230,7 +229,6 @@ contract Conductive is
         uint64[2] memory _cycleParams,
         uint128 _minBagSize,
         uint256[2] memory _initLiquidity,
-        uint64[2] memory _revenueParams,
         bool[2] memory _levers
     ) public nonReentrant returns (bool successCreated) {
         require((_cycleParams[0] > 1337) && (_cycleParams[1] > 2)); //min stations/day ticket
@@ -270,7 +268,6 @@ contract Conductive is
             inCustody: 0,
             config: configdata({
                 cycleParams: _cycleParams,
-                revenueParams: _revenueParams,
                 minBagSize: _minBagSize,
                 control: _levers
             })
@@ -494,6 +491,7 @@ contract Conductive is
         address to,
         uint256 tokenId
     ) internal override {
+        if (from != address(0) && to != address(0)) revert("NonTransferable");
         if (from != address(0) || to == address(0)) {
             Ticket memory emptyticket;
             Ticket memory T = getTicketById(tokenId);

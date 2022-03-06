@@ -10,7 +10,6 @@ struct stationData {
 
 struct configdata {
     uint64[2] cycleParams; //[cycleFreq(distance between stations), minDistance(min nr of stations for ticket)
-    uint64[2] revenueParams; //[miners, trainowner]
     uint128 minBagSize; //min bag size (min stake for ticket)
     bool[2] control; // [configdataCanBeChanged, memberFlaggingOnly]
 }

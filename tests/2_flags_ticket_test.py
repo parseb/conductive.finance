@@ -33,7 +33,6 @@ def test_can_flag_ticket(
         [1338, 3],
         2,
         [10 ** 18, 10 ** 18],
-        [0, 0],
         [False, False],
         {"from": accounts[0]},
     )  # returns True
@@ -62,8 +61,8 @@ def test_can_flag_ticket(
 
     ticket1 = Conductive.getTicket(accounts[0].address, YFIwFTM)
     assert ticket1[-2] > 0
-
-    with reverts("Invalid TWPrice"):
+    # "Invalid TWPrice"
+    with reverts():
         Conductive.flagTicket(ticket1[-2], 70, {"from": accounts[6]})
 
     wFTM.approve(solidRegistry.address, 1234567891234567890000, {"from": accounts[0]})
@@ -163,9 +162,9 @@ def test_adds_to_offboard_request(Conductive, YFIwFTM, YFI, TrainS, wFTM):
     chain
     assert Conductive.requestOffBoarding(ticket[-3], {"from": accounts[1]})
 
-    afterRequest = Conductive.getOffboardingQueue(ticket[-2], 0, {"from": accounts[8]})
+    afterRequest = Conductive.getOffboardingQueue(ticket[-3], {"from": accounts[8]})
 
-    assert afterRequest.len() >= 1
+    assert len(afterRequest) >= 1
 
     with reverts():
         Conductive.requestOffBoarding(ticket[-3], {"from": accounts[1]})
