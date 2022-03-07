@@ -1,1 +1,0 @@
-ganache --accounts 10 --hardfork istanbul --fork https://mainnet.infura.io/v3/$WEB3_INFURA_PROJECT_ID --gasLimit 12000000 --mnemonic brownie --port 8545 --unlock {'0x2A549b4AF9Ec39B03142DA6dC32221fC390B5533','0x34a4c5d747f54d5e3a3f66eb6ef3f697f474fd90'}
