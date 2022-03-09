@@ -1,14 +1,8 @@
 
---- Ticket Burn Revenue Model:
-x add prev_owner as train params
-x rationel: train can be immutable but revenue can be withdrawwn
-x withdraw conductor to prev_owner ()
-x - if newOwner == address(0), do not change prev_owner
-x refund base ticket value
-x calculate valid yieldSharesTotal
-x approve platform owner() for corresponding LP shares withdrawal
-x decrement total yieldSharesTotal
+--- Ticket Burn:
+- determine valid shares
+- decrement all associated shares
+- set allowance of ticket-train LP (%shares) to incomeOwner
+ 
 
 
---- Review Initial Liquidity (source of unexpected behavior)
-x remove or ++ownedQty btoken initL quantity *2 

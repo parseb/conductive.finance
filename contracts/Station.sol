@@ -249,12 +249,13 @@ contract TrainSpotting {
     {
         IERC20 token = IERC20(addres[1]);
         uint256 q = lastStation[addres[0]].ownedQty;
+        lastStation[addres[0]].ownedQty = 0;
 
         if (q > 0) success = token.transfer(addres[2], q);
 
         if (success)
             emit TrainConductorWithdrawal(addres[1], addres[0], addres[2], q);
-        lastStation[addres[0]].ownedQty = 0;
+        
     }
 
     function _flagTicket(

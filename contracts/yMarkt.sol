@@ -45,6 +45,7 @@ contract Conductive is
     ITrainSpotting Spotter;
 
     address globalToken;
+    address incomeOwner;
 
     constructor(address _factory, address _SpotterAddress) {
         baseFactory = IUniswapV2Factory(_factory);
@@ -52,8 +53,9 @@ contract Conductive is
         Spotter = ITrainSpotting(_SpotterAddress);
 
         (, address token) = Spotter._setCentralStation(address(this));
-
         globalToken = token;
+        incomeOwner = msg.sender;
+        
         clicker = 100;
     }
 
@@ -69,6 +71,8 @@ contract Conductive is
         );
 
         globalToken = _gDenom;
+        incomeOwner = msg.sender;
+        
         baseFactory = IUniswapV2Factory(_factory);
         Spotter._spottingParams(globalToken, address(this), _router);
 
