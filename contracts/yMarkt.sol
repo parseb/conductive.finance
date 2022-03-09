@@ -278,7 +278,7 @@ contract Conductive is
 
         allTrains.push(_train);
         emit TrainCreated(uniPool, _yourToken);
-        successCreated = Spotter._setStartStation(uniPool, _yourToken);
+        successCreated = Spotter._setStartStation(uniPool, _yourToken, _initLiquidity[0]);
     }
 
     function createTicket(

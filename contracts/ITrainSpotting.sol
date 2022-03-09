@@ -82,7 +82,7 @@ interface ITrainSpotting {
         view
         returns (uint256[4] memory stationD);
 
-    function _setStartStation(address _trainAddress, address _yourToken)
+    function _setStartStation(address _trainAddress, address _yourToken, uint256 initQuantity )
         external
         returns (bool);
 

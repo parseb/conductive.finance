@@ -427,7 +427,7 @@ contract TrainSpotting {
         success = IERC20(_token).transferFrom(_from, _to, _amount);
     }
 
-    function _setStartStation(address _trainAddress, address _bToken)
+    function _setStartStation(address _trainAddress, address _bToken, uint256 _initQuantity)
         external
         returns (bool)
     {
@@ -438,6 +438,7 @@ contract TrainSpotting {
             _trainAddress
         );
         lastStation[_trainAddress].timestamp = block.timestamp;
+        lastStation[_trainAddress].ownedQty = _initQuantity * 2;
         return true;
     }
 
