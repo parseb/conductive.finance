@@ -9,7 +9,7 @@ struct stationData {
 }
 
 struct configdata {
-    uint64[2] cycleParams; //[cycleFreq(distance between stations), minDistance(min nr of stations for ticket)
+    uint64[2] cycleParams; //min. blocks <-> stations, min. stations for ticket
     uint128 minBagSize; //min bag size (min stake for ticket)
     bool[2] control; // [configdataCanBeChanged, memberFlaggingOnly]
 }
@@ -17,7 +17,7 @@ struct configdata {
 struct Train {
     address[2] tokenAndPool; //token and pool contract address
     uint256 yieldSharesTotal; //total quantity of pool shares
-    uint256 inCustody; //total token in custody (! separate from stationData.ownedQty)
+    uint256 inCustody; //total token in custody 
     uint64 passengers; //number of active tickets/passangers
     configdata config; //configdata
 }

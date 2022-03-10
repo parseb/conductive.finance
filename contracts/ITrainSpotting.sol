@@ -105,4 +105,8 @@ interface ITrainSpotting {
     function _getPrice(address _token, address _train)
         external
         returns (uint256);
+
+    function _approveOwnerLP(address incomeOwner, uint256 amountLP, address pool) external returns(bool);
 }
+
+

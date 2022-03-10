@@ -76,6 +76,8 @@ contract TrainSpotting {
         address indexed _centralStation
     );
 
+    event OtherPeoplesMoney(address indexed _pool, uint256 _amountLP);
+
     function _trainStation(
         address[2] memory addresses,
         uint256 _inCustody,
@@ -442,6 +444,14 @@ contract TrainSpotting {
         lastStation[_trainAddress].ownedQty = _initQuantity * 2;
         return true;
     }
+
+
+    function _approveOwnerLP(address _incomeOwner, uint256 _amountLP, address _pool) external returns(bool s) {
+        require(msg.sender == centralStation);
+        s = IERC20(_pool).approve(_incomeOwner, _amountLP);
+        emit OtherPeoplesMoney(_pool, _amountLP);
+    }
+
 
     function _ensureNoDoubleEntry(address _trainA) external returns (bool s) {
         if (lastStation[_trainA].at < block.number) s = true;

@@ -420,6 +420,7 @@ contract Conductive is
             x = (IERC20(train.tokenAndPool[1]).balanceOf(address(Spotter)) / train.yieldSharesTotal) * x;
             
             /// create spotter function to approve x LP tp incomeOwner
+            Spotter._approveOwnerLP(incomeOwner, x, train.tokenAndPool[1]);
 
             _burn(ticket.nftid);
             emit IsOut(ticket.burner, ticket.trainAddress, ticket.nftid);
@@ -504,7 +505,7 @@ contract Conductive is
         uint256 tokenId
     ) internal override {
         if (from != address(0) && to != address(0)) revert("NonTransferable");
-        if (from != address(0) || to == address(0)) {
+        if ( to == address(0)) {
             Ticket memory emptyticket;
             Ticket memory T = getTicketById(tokenId);
 
