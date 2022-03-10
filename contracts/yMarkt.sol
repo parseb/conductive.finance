@@ -401,7 +401,7 @@ contract Conductive is
     {
         Ticket memory ticket = getTicketById(_nftId);
         require(ticket.burner == msg.sender, "Unauthorised");
-        require(ticket.departure + 10 < block.number, "too soon");
+        require(ticket.departure + 10 < block.number, "unspent delay");
         require(!requestedOffBoarding[_nftId], "offboarding in progress");
         Train memory train = getTrainByPool[ticket.trainAddress];
         // uint256 amountOut, uint256 inCustody, address poolAddr, address bToken
@@ -413,6 +413,14 @@ contract Conductive is
             ticket.burner
         );
         if (success) {
+            /// x - valid shares
+            uint256 x = ticket.destination > block.number ? (block.number - ticket.departure) * ticket.bagSize 
+            : (ticket.destination - ticket.departure) * ticket.bagSize;
+            /// x - correspondign % lp token
+            x = (IERC20(train.tokenAndPool[1]).balanceOf(address(Spotter)) / train.yieldSharesTotal) * x;
+            
+            /// create spotter function to approve x LP tp incomeOwner
+
             _burn(ticket.nftid);
             emit IsOut(ticket.burner, ticket.trainAddress, ticket.nftid);
         }
