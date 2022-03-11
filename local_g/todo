@@ -1,8 +1,5 @@
 
---- Ticket Burn:
-- determine valid shares
-- decrement all associated shares
-- set allowance of ticket-train LP (%shares) to incomeOwner
+
  
 
 
