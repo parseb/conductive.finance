@@ -154,12 +154,7 @@ contract Conductive is
     ////////////////////////////////
     ////////  MODIFIERS
 
-    // modifier zeroNotAllowed(uint64[4] memory _params) {
-    //     for (uint8 i = 0; i < 4; i++) {
-    //         if (_params[i] < 1) revert ZeroValuesNotAllowed();
-    //     }
-    //     _;
-    // }
+
 
     modifier onlyTrainOwner(address _train) {
         if (!(isTrainOwner[_train] == msg.sender))
@@ -388,9 +383,10 @@ contract Conductive is
             train.yieldSharesTotal,
             price
         );
-
-        for (uint256 i = 0; i < toBurn.length; i++) {
+        uint256 len = toBurn.length;
+        for (uint256 i; i < len;) {
             _burn(toBurn[i]);
+            unchecked { ++i; }
         }
     }
 

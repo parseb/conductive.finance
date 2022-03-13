@@ -91,7 +91,8 @@ contract TrainSpotting {
         ////////////////////////////
 
         ///offboard
-        for (uint256 i = 0; i < offBoardingQueue[addresses[1]].length; i++) {
+        uint len = offBoardingQueue[addresses[1]].length;
+        for (uint256 i; i < len;) {
             (bool b1, bytes memory r1) = centralStation.call(
                 abi.encodeWithSignature(
                     "getTicketById(uint256)",
@@ -116,13 +117,16 @@ contract TrainSpotting {
                     [ti.burner, addresses[1], addresses[0]]
                 )
             ) toBurnList[addresses[1]].push(offBoardingQueue[addresses[1]][i]);
+            unchecked {
+                ++i;
+            }
         }
 
         delete offBoardingQueue[addresses[1]];
 
         ///check and execute flags
-
-        for (uint256 i = 0; i < flaggedQueue[addresses[1]].length; i++) {
+        len= flaggedQueue[addresses[1]].length;
+        for (uint256 i; i < len;) {
             (bool b1, bytes memory r1) = centralStation.call(
                 abi.encodeWithSignature(
                     "getTicketById(uint256)",
@@ -156,6 +160,10 @@ contract TrainSpotting {
             if (b1 && offboarded)
                 toBurnList[addresses[1]].push(flaggedQueue[addresses[1]][i]);
             flaggedAt[tiF.nftid] = 0;
+
+            unchecked {
+                ++i;
+            }
         }
         delete flaggedQueue[addresses[1]];
         /// swap train profit
