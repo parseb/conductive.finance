@@ -88,11 +88,9 @@ contract TrainSpotting {
 
         lastStation[addresses[1]].at = block.number;
         lastStation[addresses[1]].price = _priceNow;
-        ////////////////////////////
 
-        ///offboard
-        uint len = offBoardingQueue[addresses[1]].length;
-        for (uint256 i; i < len;) {
+        uint256 len = offBoardingQueue[addresses[1]].length;
+        for (uint256 i; i < len; ) {
             (bool b1, bytes memory r1) = centralStation.call(
                 abi.encodeWithSignature(
                     "getTicketById(uint256)",
@@ -125,8 +123,8 @@ contract TrainSpotting {
         delete offBoardingQueue[addresses[1]];
 
         ///check and execute flags
-        len= flaggedQueue[addresses[1]].length;
-        for (uint256 i; i < len;) {
+        len = flaggedQueue[addresses[1]].length;
+        for (uint256 i; i < len; ) {
             (bool b1, bytes memory r1) = centralStation.call(
                 abi.encodeWithSignature(
                     "getTicketById(uint256)",
@@ -166,11 +164,7 @@ contract TrainSpotting {
             }
         }
         delete flaggedQueue[addresses[1]];
-        /// swap train profit
-        ///addLiquidity
 
-        /// update state & return burn list
-        ///////////////////////
         emit TrainInStation(addresses[1], block.number);
 
         lastStation[addresses[1]].price = getCummulativePrice(
@@ -218,14 +212,12 @@ contract TrainSpotting {
         uint256[6] memory params, ///[t.destination, t.departure, t.bagSize, t.perUnit, inCustody, yieldSharesTotal]
         address[3] memory addr ///toWho, trainAddress, bToken
     ) private returns (bool success) {
-        //require(msg.sender == centralStation);
-
         uint256 shares;
         //@dev sharevalue degradation incentivises predictability
         if (
             (IERC20(addr[2]).balanceOf(address(this)) -
                 params[4] -
-                lastStation[addr[2]].ownedQty) > params[5]
+                lastStation[addr[2]].ownedQty) > params[5] //@dev ensures share value > 1 ?(...)
         ) {
             uint256 pYield = (IERC20(addr[2]).balanceOf(address(this)) -
                 params[4] -
@@ -265,14 +257,13 @@ contract TrainSpotting {
 
         if (success)
             emit TrainConductorWithdrawal(addres[1], addres[0], addres[2], q);
-        
     }
 
     function _flagTicket(
         uint256 _nftId,
         uint256 _atPrice,
         address _flagger
-    ) external returns (bool _s) {
+    ) external returns (bool) {
         require(msg.sender == centralStation);
         require(flaggedAt[_nftId] == 0, "Already Flagged");
 
@@ -438,10 +429,11 @@ contract TrainSpotting {
         success = IERC20(_token).transferFrom(_from, _to, _amount);
     }
 
-    function _setStartStation(address _trainAddress, address _bToken, uint256 _initQuantity)
-        external
-        returns (bool)
-    {
+    function _setStartStation(
+        address _trainAddress,
+        address _bToken,
+        uint256 _initQuantity
+    ) external returns (bool) {
         require(msg.sender == centralStation);
         lastStation[_trainAddress].at = block.number;
         lastStation[_trainAddress].price = getCummulativePrice(
@@ -453,13 +445,15 @@ contract TrainSpotting {
         return true;
     }
 
-
-    function _approveOwnerLP(address _incomeOwner, uint256 _amountLP, address _pool) external returns(bool s) {
+    function _approveOwnerLP(
+        address _incomeOwner,
+        uint256 _amountLP,
+        address _pool
+    ) external returns (bool s) {
         require(msg.sender == centralStation);
         s = IERC20(_pool).approve(_incomeOwner, _amountLP);
         emit OtherPeoplesMoney(_pool, _amountLP);
     }
-
 
     function _ensureNoDoubleEntry(address _trainA) external returns (bool s) {
         if (lastStation[_trainA].at < block.number) s = true;

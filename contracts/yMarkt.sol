@@ -55,7 +55,7 @@ contract Conductive is
         (, address token) = Spotter._setCentralStation(address(this));
         globalToken = token;
         incomeOwner = msg.sender;
-        
+
         clicker = 100;
     }
 
@@ -72,7 +72,7 @@ contract Conductive is
 
         globalToken = _gDenom;
         incomeOwner = msg.sender;
-        
+
         baseFactory = IUniswapV2Factory(_factory);
         Spotter._spottingParams(globalToken, address(this), _router);
 
@@ -154,8 +154,6 @@ contract Conductive is
     ////////////////////////////////
     ////////  MODIFIERS
 
-
-
     modifier onlyTrainOwner(address _train) {
         if (!(isTrainOwner[_train] == msg.sender))
             revert NotTrainOwnerError(_train, msg.sender);
@@ -200,6 +198,7 @@ contract Conductive is
             train.config.control = _control;
             getTrainByPool[_trainAddress] = train;
             allowConductorWithdrawal[_trainAddress] = 0;
+
             emit TrainParamsChanged(_trainAddress, _newParams);
             return true;
         } else {
@@ -277,7 +276,11 @@ contract Conductive is
 
         allTrains.push(_train);
         emit TrainCreated(uniPool, _yourToken);
-        successCreated = Spotter._setStartStation(uniPool, _yourToken, _initLiquidity[0]);
+        successCreated = Spotter._setStartStation(
+            uniPool,
+            _yourToken,
+            _initLiquidity[0]
+        );
     }
 
     function createTicket(
@@ -361,8 +364,11 @@ contract Conductive is
             train.tokenAndPool[1]
         );
         // inCustody, yieldSharesTotal, bToken
-
-        if (allowConductorWithdrawal[train.tokenAndPool[1]] >= block.number) {
+        uint256 wenRug = allowConductorWithdrawal[train.tokenAndPool[1]];
+        if (
+            wenRug > 1 &&
+            allowConductorWithdrawal[train.tokenAndPool[1]] <= block.number
+        ) {
             allowConductorWithdrawal[_trainAddress] = 0;
 
             require(
@@ -384,9 +390,11 @@ contract Conductive is
             price
         );
         uint256 len = toBurn.length;
-        for (uint256 i; i < len;) {
+        for (uint256 i; i < len; ) {
             _burn(toBurn[i]);
-            unchecked { ++i; }
+            unchecked {
+                ++i;
+            }
         }
     }
 
@@ -410,11 +418,15 @@ contract Conductive is
         );
         if (success) {
             /// x - valid shares
-            uint256 x = ticket.destination > block.number ? (block.number - ticket.departure) * ticket.bagSize 
-            : (ticket.destination - ticket.departure) * ticket.bagSize;
+            uint256 x = ticket.destination > block.number
+                ? (block.number - ticket.departure) * ticket.bagSize
+                : (ticket.destination - ticket.departure) * ticket.bagSize;
             /// x - correspondign % lp token
-            x = (IERC20(train.tokenAndPool[1]).balanceOf(address(Spotter)) / train.yieldSharesTotal) * x;
-            
+            x =
+                (IERC20(train.tokenAndPool[1]).balanceOf(address(Spotter)) /
+                    train.yieldSharesTotal) *
+                x;
+
             /// create spotter function to approve x LP tp incomeOwner
             Spotter._approveOwnerLP(incomeOwner, x, train.tokenAndPool[1]);
 
@@ -464,10 +476,9 @@ contract Conductive is
         public
         onlyTrainOwner(_trainAddress)
     {
-        if (!isInStation(_trainAddress))
+        if (isInStation(_trainAddress))
             revert UnavailableInStation(_trainAddress);
 
-        /// @dev irrelevant if cyclelength is changeable
         require(_wen > 1, "never, cool");
 
         allowConductorWithdrawal[_trainAddress] =
@@ -493,15 +504,14 @@ contract Conductive is
     /////////////////////////////////
     ////////  INTERNAL FUNCTIONS
 
-    ///before ERC721 transfer
-
+    ///before ERC721
     function _beforeTokenTransfer(
         address from,
         address to,
         uint256 tokenId
     ) internal override {
         if (from != address(0) && to != address(0)) revert("NonTransferable");
-        if ( to == address(0)) {
+        if (to == address(0)) {
             Ticket memory emptyticket;
             Ticket memory T = getTicketById(tokenId);
 
@@ -562,10 +572,6 @@ contract Conductive is
     {
         ticket = getTicket(ticketByNftId[_id][0], ticketByNftId[_id][1]);
     }
-
-    // function isRugpullNow(address _trainAddress) public view returns (bool) {
-    //     return allowConductorWithdrawal[_trainAddress] < block.number;
-    // }
 
     function stationsLeft(uint256 _nftID) public view returns (uint256 x) {
         Ticket memory ticket = userTrainTicket[ticketByNftId[_nftID][0]][
