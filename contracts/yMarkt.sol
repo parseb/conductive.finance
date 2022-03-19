@@ -409,14 +409,16 @@ contract Conductive is
         require(ticket.departure + 10 < block.number, "unspent delay");
         require(!requestedOffBoarding[_nftId], "offboarding in progress");
         Train memory train = getTrainByPool[ticket.trainAddress];
-        // uint256 amountOut, uint256 inCustody, address poolAddr, address bToken
 
-        uint256 debt = ticket.bagSize -
-            ((((Spotter._getLastStation(ticket.trainAddress)[4] * 100) /
-                train.inCustody) * ticket.bagSize) / 100);
-        ///@dev this debt concept is a good place to refactor
+        uint256 debt = Spotter._getLastStation(ticket.trainAddress)[4];
+
+        uint256 amount = debt > 0
+            ? (ticket.bagSize -
+                ((((debt * 100) / train.inCustody) * ticket.bagSize) / 100))
+            : ticket.bagSize;
+        ///@dev refactor
         success = Spotter._tokenOut(
-            ticket.bagSize - debt,
+            amount,
             train.inCustody,
             ticket.trainAddress,
             train.tokenAndPool[0],
