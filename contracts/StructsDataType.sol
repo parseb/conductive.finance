@@ -6,6 +6,7 @@ struct stationData {
     uint256 price; //price at last station
     uint256 ownedQty; //owned quantity (withdrawable by conductor / ! inCustody)
     uint256 timestamp; //for intrastation twap
+    uint256 trainalized; // governable borrow from user inCustody bucket (debt)
 }
 
 struct configdata {
@@ -17,7 +18,7 @@ struct configdata {
 struct Train {
     address[2] tokenAndPool; //token and pool contract address
     uint256 yieldSharesTotal; //total quantity of pool shares
-    uint256 inCustody; //total token in custody 
+    uint256 inCustody; //total token in custody
     uint64 passengers; //number of active tickets/passangers
     configdata config; //configdata
 }

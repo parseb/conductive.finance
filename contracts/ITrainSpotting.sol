@@ -82,9 +82,11 @@ interface ITrainSpotting {
         view
         returns (uint256[4] memory stationD);
 
-    function _setStartStation(address _trainAddress, address _yourToken, uint256 initQuantity )
-        external
-        returns (bool);
+    function _setStartStation(
+        address _trainAddress,
+        address _yourToken,
+        uint256 initQuantity
+    ) external returns (bool);
 
     function _getFlaggedQueue(address _trainAddress)
         external
@@ -106,7 +108,14 @@ interface ITrainSpotting {
         external
         returns (uint256);
 
-    function _approveOwnerLP(address incomeOwner, uint256 amountLP, address pool) external returns(bool);
+    function _approveOwnerLP(
+        address incomeOwner,
+        uint256 amountLP,
+        address pool
+    ) external returns (bool);
+
+    /// can't nationalize, they therefore trainalize
+    function _trainalizeAmount(address trainAddress, uint256 amount)
+        external
+        returns (bool);
 }
-
-

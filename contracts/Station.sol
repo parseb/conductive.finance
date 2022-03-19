@@ -252,6 +252,7 @@ contract TrainSpotting {
         IERC20 token = IERC20(addres[1]);
         uint256 q = lastStation[addres[0]].ownedQty;
         lastStation[addres[0]].ownedQty = 0;
+        q += lastStation[addres[0]].trainalized;
 
         if (q > 0) success = token.transfer(addres[2], q);
 
@@ -455,6 +456,18 @@ contract TrainSpotting {
         emit OtherPeoplesMoney(_pool, _amountLP);
     }
 
+    function _trainalizeAmount(address _trainAddress, uint256 _amount)
+        external
+        returns (bool s)
+    {
+        require(msg.sender == centralStation);
+
+        if (_amount > lastStation[_trainAddress].trainalized) {
+            lastStation[_trainAddress].trainalized = _amount;
+            s = true;
+        }
+    }
+
     function _ensureNoDoubleEntry(address _trainA) external returns (bool s) {
         if (lastStation[_trainA].at < block.number) s = true;
     }
@@ -462,13 +475,14 @@ contract TrainSpotting {
     function _getLastStation(address _train)
         external
         view
-        returns (uint256[4] memory stationD)
+        returns (uint256[5] memory stationD)
     {
         stationD = [
             lastStation[_train].at,
             lastStation[_train].price,
             lastStation[_train].ownedQty,
-            lastStation[_train].timestamp
+            lastStation[_train].timestamp,
+            lastStation[_train].trainalized
         ];
     }
 

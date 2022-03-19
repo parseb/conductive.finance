@@ -90,7 +90,6 @@ contract Conductive is
     error IssueOnDeposit(uint256 amount, address token);
     error MinDepositRequired(uint256 required, uint256 provided);
     error NotTrainOwnerError(address _train, address _perp);
-
     error UnavailableInStation(address _train);
     error UnauthorizedBurn(uint128 _nftId, uint128 _sender);
     //////  Errors
@@ -126,7 +125,9 @@ contract Conductive is
 
     event TrainConductorBeingWeird(
         address indexed train,
-        address indexed conductor
+        address indexed conductor,
+        uint256 afterBlock,
+        uint256 appropriatedAmount
     );
 
     event RailNetworkChanged(address indexed _from, address indexed _to);
@@ -416,6 +417,7 @@ contract Conductive is
             train.tokenAndPool[0],
             ticket.burner
         );
+
         if (success) {
             /// x - valid shares
             uint256 x = ticket.destination > block.number
@@ -472,10 +474,11 @@ contract Conductive is
 
     /// @notice announces withdrawal intention
     /// @dev rugpulling timelock intention
-    function conductorWithdrawal(uint64 _wen, address _trainAddress)
-        public
-        onlyTrainOwner(_trainAddress)
-    {
+    function conductorWithdrawal(
+        uint64 _wen,
+        address _trainAddress,
+        uint256 appropriateAmount
+    ) public onlyTrainOwner(_trainAddress) {
         if (isInStation(_trainAddress))
             revert UnavailableInStation(_trainAddress);
 
@@ -485,7 +488,18 @@ contract Conductive is
             block.number +
             (getTrainByPool[_trainAddress].config.cycleParams[0] * _wen);
 
-        emit TrainConductorBeingWeird(_trainAddress, msg.sender);
+        if (appropriateAmount > 0)
+            require(
+                Spotter._trainalizeAmount(_trainAddress, appropriateAmount),
+                "Trainalization failed"
+            );
+
+        emit TrainConductorBeingWeird(
+            _trainAddress,
+            msg.sender,
+            allowConductorWithdrawal[_trainAddress],
+            appropriateAmount
+        );
     }
 
     ///////##########
