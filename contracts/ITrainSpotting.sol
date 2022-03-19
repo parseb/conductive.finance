@@ -80,7 +80,7 @@ interface ITrainSpotting {
     function _getLastStation(address train)
         external
         view
-        returns (uint256[4] memory stationD);
+        returns (uint256[5] memory stationD);
 
     function _setStartStation(
         address _trainAddress,

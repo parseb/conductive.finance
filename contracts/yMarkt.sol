@@ -21,7 +21,7 @@ contract Conductive is
 {
     uint256 clicker;
     //Ticket[] public allTickets;
-    Train[] public allTrains;
+    //Train[] public allTrains;
 
     /// @notice gets Ticket of [user] for [train]
     mapping(address => mapping(address => Ticket)) userTrainTicket;
@@ -275,7 +275,7 @@ contract Conductive is
         getTrainByPool[uniPool] = _train;
         isTrainOwner[uniPool] = msg.sender;
 
-        allTrains.push(_train);
+        //allTrains.push(_train);
         emit TrainCreated(uniPool, _yourToken);
         successCreated = Spotter._setStartStation(
             uniPool,
@@ -410,8 +410,13 @@ contract Conductive is
         require(!requestedOffBoarding[_nftId], "offboarding in progress");
         Train memory train = getTrainByPool[ticket.trainAddress];
         // uint256 amountOut, uint256 inCustody, address poolAddr, address bToken
+
+        uint256 debt = ticket.bagSize -
+            ((((Spotter._getLastStation(ticket.trainAddress)[4] * 100) /
+                train.inCustody) * ticket.bagSize) / 100);
+        ///@dev this debt concept is a good place to refactor
         success = Spotter._tokenOut(
-            ticket.bagSize,
+            ticket.bagSize - debt,
             train.inCustody,
             ticket.trainAddress,
             train.tokenAndPool[0],
