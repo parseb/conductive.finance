@@ -16,10 +16,6 @@ interface ITrainSpotting {
         uint256 _price
     ) external returns (uint256[] memory);
 
-    // function _offBoard(uint256[6] memory params, address[3] memory addresses)
-    //     external
-    //     returns (bool);
-
     /// [ trainAddress, bToken, tOwner ]
     function _withdrawBuybackToken(address[3] memory addresses)
         external

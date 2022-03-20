@@ -82,7 +82,6 @@ contract Conductive is
 
     ////////////////////////////////
     ///////  ERRORS
-
     error AlreadyOnThisTrain(address train);
     error NotOnThisTrain(address train);
     error ZeroValuesNotAllowed();
@@ -349,8 +348,10 @@ contract Conductive is
         emit TicketCreated(msg.sender, _trainAddress, ticket.perUnit);
     }
 
+    ///@dev consider risk for permissionless execution / lp / useage profile
     function trainStation(address _trainAddress)
         public
+        payable
         nonReentrant
         returns (bool s)
     {
@@ -368,7 +369,7 @@ contract Conductive is
         uint256 wenRug = allowConductorWithdrawal[train.tokenAndPool[1]];
         if (
             wenRug > 1 &&
-            allowConductorWithdrawal[train.tokenAndPool[1]] <= block.number
+            allowConductorWithdrawal[train.tokenAndPool[1]] >= block.number
         ) {
             allowConductorWithdrawal[_trainAddress] = 0;
 
@@ -509,8 +510,7 @@ contract Conductive is
         );
     }
 
-    ///////##########
-    /// dev: entertain frontrunning negatives
+    /// @dev: entertain frontrunning/race negatives
     function flagTicket(uint256 _nftId, uint256 _atPrice)
         public
         returns (bool s)
