@@ -88,38 +88,35 @@ contract Conductive is
     error TrainNotFound(address ghostTrain);
     error IssueOnDeposit(uint256 amount, address token);
     error MinDepositRequired(uint256 required, uint256 provided);
-    error NotTrainOwnerError(address _train, address _perp);
-    error UnavailableInStation(address _train);
-    error UnauthorizedBurn(uint128 _nftId, uint128 _sender);
+    error NotTrainOwnerError(address train, address perp);
+    error UnavailableInStation(address train);
+    error UnauthorizedBurn(uint128 nftId, uint128 sender);
     //////  Errors
     ////////////////////////////////
 
     ////////////////////////////////
     ///////  EVENTS
 
-    event FallbackCall(address _sender);
+    // event FallbackCall(address sender);
 
-    event TrainCreated(
-        address indexed _trainAddress,
-        address indexed _yourToken
-    );
+    event TrainCreated(address indexed trainAddress, address indexed yourToken);
 
     event TicketCreated(
-        address _passanger,
-        address indexed _trainAddress,
-        uint256 indexed _perUnit
+        address passanger,
+        address indexed trainAddress,
+        uint256 indexed perUnit
     );
 
     event TicketBurned(
-        address indexed _passanger,
-        address indexed _trainAddress,
-        uint256 _nftid
+        address indexed passanger,
+        address indexed trainAddress,
+        uint256 nftid
     );
 
     event IsOut(
-        address indexed _who,
-        address indexed _ofTrain,
-        uint256 indexed _nftID
+        address indexed who,
+        address indexed ofTrain,
+        uint256 indexed nftID
     );
 
     event TrainConductorBeingWeird(
@@ -129,23 +126,20 @@ contract Conductive is
         uint256 appropriatedAmount
     );
 
-    event RailNetworkChanged(address indexed _from, address indexed _to);
+    event RailNetworkChanged(address indexed from, address indexed to);
 
-    event TrainParamsChanged(
-        address indexed _trainAddress,
-        uint64[2] _newParams
-    );
+    event TrainParamsChanged(address indexed trainAddress, uint64[2] newParams);
 
     event TrainOwnerChanged(
-        address indexed _trainAddress,
-        address indexed _oldOwner,
-        address _newOwner
+        address indexed trainAddress,
+        address indexed oldOwner,
+        address newOwner
     );
 
     event ChangedBurnerOf(
-        uint128 _nftId,
-        address indexed _newBurner,
-        address indexed _oldBurner
+        uint128 nftId,
+        address indexed newBurner,
+        address indexed oldBurner
     );
 
     //////  Events
@@ -163,16 +157,13 @@ contract Conductive is
     ///////// Modifiers
     //////////////////////////////
 
-    /// fallback
     // fallback() external {
     //     emit FallbackCall(msg.sender);
     // }
 
     // receive() external payable {
-    //     (bool s, ) = payable(owner()).call{value: msg.value}("on purple");
-    //     if (!s) {
-    //         emit FallbackCall(msg.sender);
-    //     }
+    //     (bool s, ) = payable(owner()).call{value: msg.value}();
+    //     if (!s) emit FallbackCall(msg.sender);
     // }
 
     ////////////////////////////////
@@ -182,7 +173,7 @@ contract Conductive is
         uint64[2] memory _newParams,
         uint64[2] memory _newParamsRev,
         bool[2] memory _control
-    ) public onlyTrainOwner(_trainAddress) nonReentrant returns (bool) {
+    ) public payable onlyTrainOwner(_trainAddress) nonReentrant returns (bool) {
         require(
             _newParams[0] + _newParams[1] > 51337,
             "zero values not allowed"
@@ -208,6 +199,7 @@ contract Conductive is
 
     function changeTrainOwner(address _trainAddress, address _newOwner)
         public
+        payable
         onlyTrainOwner(_trainAddress)
         returns (bool)
     {
@@ -228,7 +220,7 @@ contract Conductive is
         uint128 _minBagSize,
         uint256[2] memory _initLiquidity,
         bool[2] memory _levers
-    ) public nonReentrant returns (bool successCreated) {
+    ) public payable nonReentrant returns (bool successCreated) {
         require((_cycleParams[0] > 1337) && (_cycleParams[1] > 2)); //min stations/day ticket
 
         address uniPool = baseFactory.getPair(_yourToken, globalToken);
@@ -288,7 +280,7 @@ contract Conductive is
         uint256 _perUnit, // target price
         address _trainAddress, // train address
         uint256 _bagSize // nr of tokens
-    ) public nonReentrant returns (bool success) {
+    ) public payable nonReentrant returns (bool success) {
         // if (!isInStation(_trainAddress))
         //     revert UnavailableInStation(_trainAddress);
         if (userTrainTicket[msg.sender][_trainAddress].destination > 0)
@@ -402,6 +394,7 @@ contract Conductive is
 
     function burnTicket(uint256 _nftId)
         public
+        payable
         nonReentrant
         returns (bool success)
     {
@@ -447,6 +440,7 @@ contract Conductive is
 
     function assignBurner(uint128 _id, address _newBurner)
         public
+        payable
         nonReentrant
         returns (bool s)
     {
@@ -463,6 +457,7 @@ contract Conductive is
 
     function requestOffBoarding(address _trainAddress)
         public
+        payable
         nonReentrant
         returns (bool success)
     {
@@ -486,7 +481,7 @@ contract Conductive is
         uint64 _wen,
         address _trainAddress,
         uint256 appropriateAmount
-    ) public onlyTrainOwner(_trainAddress) {
+    ) public payable onlyTrainOwner(_trainAddress) {
         if (isInStation(_trainAddress))
             revert UnavailableInStation(_trainAddress);
 
@@ -510,9 +505,10 @@ contract Conductive is
         );
     }
 
-    /// @dev: entertain frontrunning/race negatives
+    ///dev: entertain frontrunning/race negatives
     function flagTicket(uint256 _nftId, uint256 _atPrice)
         public
+        payable
         returns (bool s)
     {
         require(!requestedOffBoarding[_nftId], "Offboarding status");

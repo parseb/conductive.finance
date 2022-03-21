@@ -1,8 +1,7 @@
 
 
 ### Conductive Finance 
-is a protocol that aims to rebase value investment on the dynamics of purpose in a universally shared reality that actualizes itself, block by block, in predictable, standardised and easy to understand ways.
+
+Conductive Finance aims to rebase value investment on the dynamics of purpose by leveraging accessible, trustworthy and consciously imparted ledgers in predictable, standardized and understandable ways.
 
 
-##### this is a story about a train
-![train](https://i.imgur.com/nuzDOBh.png)
