@@ -6,6 +6,7 @@ Conductive Finance aims to rebase value investment on the dynamics of purpose by
 
 See discourse.md or [discourse](https://forum.developerdao.com/t/rfc-conductive-finance/1927) for story.
 
+___
 
 ##### Requirements
 Brownie
@@ -21,6 +22,6 @@ export POLYGONSCAN_TOKEN= (requires polygonscan account)
 
 ##### run tests
 
-brownie test --network polygon-main-fork -I -s
-
-open an issue if you're having issues ^ 
+`brownie test --network polygon-main-fork -I -s`
+____
+open issue if issue
