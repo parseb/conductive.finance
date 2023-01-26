@@ -4,7 +4,7 @@
 
 Conductive Finance aims to rebase value investment on the dynamics of purpose by leveraging accessible, trustworthy and consciously imparted ledgers in predictable, standardized and understandable ways.
 
-See discourse.md or [discourse](https://forum.developerdao.com/t/rfc-conductive-finance/1927) for story.
+See [discourse.md](https://github.com/parseb/conductive.finance1/blob/main/discourse.md) for genesis story and high-level description.
 
 ___
 
